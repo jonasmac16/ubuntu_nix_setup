@@ -2,9 +2,11 @@
 .ansible-retry
 *.retry
 
-# Strict enforcement block for plain text vault targets
-ansible/host_vars/all/secrets.yml
-
 # Nix environment compilation buffers
 result
 .nix-profile
+
+# NOTE: ansible/host_vars/all/secrets.yml is intentionally NOT ignored.
+# The Ansible Vault encrypted secrets file is committed to the repository for
+# central management. A pre-commit hook (scripts/pre-commit, installed via
+# scripts/install-hooks.sh) enforces that it is always committed encrypted.

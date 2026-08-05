@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+VAULT_FILE="ansible/host_vars/all/secrets.yml"
+
+if git diff --cached --name-only --diff-filter=ACM | grep -qx "$VAULT_FILE"; then
+    if git show ":$VAULT_FILE" 2>/dev/null | head -n 1 | grep -q '^$ANSIBLE_VAULT;'; then
+        exit 0
+    fi
+    cat >&2 <<EOF
+ERROR: $VAULT_FILE is staged but NOT encrypted with ansible-vault.
+
+The secrets file must never be committed in plaintext.
+Fix one of:
+  - encrypt it:   ansible-vault encrypt $VAULT_FILE
+  - unstage it:   git restore --staged $VAULT_FILE
+EOF
+    exit 1
+fi

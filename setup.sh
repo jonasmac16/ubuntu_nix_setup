@@ -21,7 +21,11 @@ chmod 600 ~/.git-credentials
 
 # 4. Trigger localized loopback playbook executions
 echo "[-] Executing Ansible hardware execution layers..."
-ansible-playbook -i ansible/inventory.ini ansible/playbook.yml --connection=local -l ubuntu --ask-become-pass --ask-vault-pass
+VAULT_ARGS="--ask-vault-pass"
+if [ -f "$HOME/.ansible/vault_pass" ]; then
+    VAULT_ARGS="--vault-password-file $HOME/.ansible/vault_pass"
+fi
+ansible-playbook -i ansible/inventory.ini ansible/playbook.yml --connection=local -l ubuntu --ask-become-pass $VAULT_ARGS
 
 # 5. Bootstrap standalone Nix layers
 if [ ! -d "/nix" ]; then

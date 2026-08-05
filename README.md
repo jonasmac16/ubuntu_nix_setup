@@ -95,7 +95,7 @@ nix-ubuntu-infra/
 │   └── host_vars/
 │       ├── all/               # COMMON configuration — applies to every machine
 │       │   ├── vars.yml       # Non-sensitive values + machine-agnostic defaults
-│       │   └── secrets.yml    # ANSIBLE-VAULT ENCRYPTED secrets (gitignored)
+│       │   └── secrets.yml    # ANSIBLE-VAULT ENCRYPTED secrets (committed, never plaintext)
 │       ├── my-workstation.yml # Host-specific overrides (example: desktop)
 │       └── my-laptop.yml      # Host-specific overrides (example: laptop)
 │
@@ -147,7 +147,7 @@ git remote add origin https://github.com/<you>/nix-ubuntu-infra.git
 git push -u origin main
 ```
 
-> **Note on the secrets file**: `ansible/host_vars/all/secrets.yml` is listed in `.gitignore`. Until you encrypt it (Step 5), the template will still be tracked if you added it with `git add -A` above. If you committed the plaintext template, that is fine — just encrypt it before adding real values, per Step 5.
+> **Note on the secrets file**: `ansible/host_vars/all/secrets.yml` is **committed to the repository encrypted** with Ansible Vault — that is how it is centrally managed across machines. A pre-commit hook (`scripts/pre-commit`, installed via `scripts/install-hooks.sh`) blocks any commit where the file is plaintext. Before the first real run, encrypt it and fill in your values per Step 5.
 
 If you already have this repository hosted, skip straight to cloning it on the target machine.
 
@@ -218,15 +218,23 @@ You can delete the example files (`my-workstation.yml`, `my-laptop.yml`) once yo
 
 ### Step 5 — Create and encrypt the secrets vault
 
-The file `ansible/host_vars/all/secrets.yml` holds plaintext secret values and is **gitignored**. Create a real one and encrypt it before putting any real data in.
+The file `ansible/host_vars/all/secrets.yml` holds secret values (WiFi password, NAS/SMB credentials, Git token, per-host SSH keypairs) and is **always committed to the repository in encrypted form** so every machine gets identical secrets via `git pull`. The only gate protecting it is the Ansible Vault password.
 
-1. Copy the template and open it for the first time:
+1. If the file is not yet encrypted (it may exist as a plaintext template from the initial commit), encrypt it and set a vault password:
 
    ```bash
-   ansible-vault create ansible/host_vars/all/secrets.yml
+   ansible-vault encrypt ansible/host_vars/all/secrets.yml
    ```
 
-   This launches your `$EDITOR` (set `EDITOR=nano` or `EDITOR=vim` first if needed). Paste the template structure:
+   **Remember the vault password** — you will need it for every vault operation. Keep a copy in your password manager.
+
+2. Open the encrypted vault and fill in your real values (structure shown below):
+
+   ```bash
+   ansible-vault edit ansible/host_vars/all/secrets.yml
+   ```
+
+   This launches your `$EDITOR` (set `EDITOR=nano` or `EDITOR=vim` first if needed). The schema:
 
    ```yaml
    ---
@@ -256,22 +264,34 @@ The file `ansible/host_vars/all/secrets.yml` holds plaintext secret values and i
      my-laptop: "ssh-ed25519 AAAA... laptop@my-laptop"
    ```
 
-   On first save, `ansible-vault` prompts for a vault password. **Remember it** — you will need it for every `--ask-vault-pass` run.
-
-2. Verify the file is encrypted (the content is now `$ANSIBLE_VAULT;...`):
+3. Verify the file on disk is still encrypted (content starts with `$ANSIBLE_VAULT;...`):
 
    ```bash
    head -1 ansible/host_vars/all/secrets.yml
    ```
 
-3. To view or edit the vault later:
+4. Commit and push the encrypted vault so all machines pick it up:
 
    ```bash
-   ansible-vault view  ansible/host_vars/all/secrets.yml
-   ansible-vault edit  ansible/host_vars/all/secrets.yml
+   git add ansible/host_vars/all/secrets.yml
+   git commit -m "Update encrypted secrets vault"
+   git push origin main
    ```
 
-> The encrypted file is still gitignored, so it lives only on the machines where you create it. To propagate it to a second machine, decrypt it, scp it over, and re-encrypt there — or better, keep a copy in your password manager. **Never commit the plaintext or a decrypted copy.**
+   The pre-commit hook will abort the commit if the file is ever staged in plaintext.
+
+5. Install the pre-commit guard (once per clone) and place the vault password for non-interactive runs:
+
+   ```bash
+   ./scripts/install-hooks.sh
+   mkdir -p ~/.ansible
+   echo 'YOUR_VAULT_PASSWORD' > ~/.ansible/vault_pass
+   chmod 600 ~/.ansible/vault_pass
+   ```
+
+   `setup.sh` (and the Ansible run) uses `~/.ansible/vault_pass` automatically when present, otherwise it prompts with `--ask-vault-pass`.
+
+> **Never commit a plaintext or decrypted copy of the vault.** The encrypted file is safe to version; the password is the single point of security. Losing the password means the vault cannot be decrypted, so back it up in a password manager.
 
 ### Step 6 — Set your real username in Home Manager
 
@@ -445,7 +465,7 @@ infra-save
 1. On the new machine: `git clone https://github.com/<you>/nix-ubuntu-infra.git`.
 2. Repeat [Step 3](#step-3--register-your-machine-in-the-inventory) — add this machine's hostname to the appropriate group in `inventory.ini`. Make sure the first machine is **not** also listed, or it will be reconfigured too.
 3. Repeat [Step 4](#step-4--create-your-host-specific-configuration) — create `host_vars/<hostname>.yml` for the new machine.
-4. Repeat [Step 5](#step-5--create-and-encrypt-the-secrets-vault) — create the vault **on the new machine** (it is gitignored).
+4. Ensure the vault password is available on the new machine — either place `~/.ansible/vault_pass` (mode `0600`) or rely on the `--ask-vault-pass` prompt. The encrypted secrets themselves come with the clone; nothing needs to be recreated.
 5. Commit and push the inventory/host-var changes from any machine.
 6. On the new machine: `./setup.sh`, then reboot.
 
@@ -473,7 +493,8 @@ The secrets vault (`host_vars/all/secrets.yml`) is common by design — WiFi, NA
 
 ## Security Reference
 
-- **`ansible/host_vars/all/secrets.yml`** is the only secrets store. It must stay encrypted with `ansible-vault` and is gitignored. Plaintext runs of the playbook require `--ask-vault-pass`.
+- **`ansible/host_vars/all/secrets.yml`** is the only secrets store. It is **committed encrypted** with `ansible-vault` and is the single source of truth across machines. Plaintext runs of the playbook require `--ask-vault-pass` (or the `~/.ansible/vault_pass` password file).
+- **Pre-commit guard**: `scripts/install-hooks.sh` installs a hook that refuses any commit where `secrets.yml` is staged in plaintext. Install it once per clone (`./scripts/install-hooks.sh`).
 - **Vault cheat sheet:**
 
   ```bash
@@ -524,7 +545,10 @@ Notes:
 Your `inventory.ini` has no host in the `[ubuntu]` group, or all entries are commented out. Add your hostname entry (see Step 3).
 
 **`Vault password was not provided`**
-Run with `--ask-vault-pass` (the aliases already do). If you just created the vault, make sure the file is actually encrypted (`head -1 ...secrets.yml` should start with `$ANSIBLE_VAULT`).
+Run with `--ask-vault-pass` (the aliases already do), or place the password in `~/.ansible/vault_pass` (mode `0600`) for non-interactive runs. If you just created the vault, make sure the file is actually encrypted (`head -1 ...secrets.yml` should start with `$ANSIBLE_VAULT`).
+
+**`commit` blocked by the pre-commit hook**
+The hook refuses to commit `secrets.yml` in plaintext. Run `ansible-vault encrypt ansible/host_vars/all/secrets.yml` (or unstage the file), then commit again. If this is a false positive on a brand-new clone, the hook may not be installed — run `./scripts/install-hooks.sh`.
 
 **NVIDIA driver fails to install / won't load**
 `nvidia-driver-595` is the packaged NVIDIA driver for Ubuntu 26.04 (kernel 7.0). If your GPU is Turing-generation or newer and you want the open kernel module variant, switch to `nvidia-driver-595-open` in `ansible/playbook.yml` (Section A, "Provision native proprietary graphics drivers"). Alternatively, run `ubuntu-drivers install` once to let Ubuntu pick the driver it recommends for your card. Then re-run `infra-apply-system`.
