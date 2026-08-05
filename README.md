@@ -235,10 +235,25 @@ The file `ansible/host_vars/all/secrets.yml` holds plaintext secret values and i
    vault_smb_password: "SambaNASPassword"
    vault_git_token: "github_pat_..._alphanumeric"
    vault_git_email: "you@example.com"
-   vault_ssh_private_key: |
+
+   vault_ssh_private_key: |        # optional shared fallback (legacy)
      -----BEGIN OPENSSH PRIVATE KEY-----
      <your actual ed25519 or RSA private key data>
      -----END OPENSSH PRIVATE KEY-----
+
+   vault_host_ssh_private_keys:    # one entry per machine, keyed by inventory hostname
+     my-workstation: |
+       -----BEGIN OPENSSH PRIVATE KEY-----
+       <my-workstation private key data>
+       -----END OPENSSH PRIVATE KEY-----
+     my-laptop: |
+       -----BEGIN OPENSSH PRIVATE KEY-----
+       <my-laptop private key data>
+       -----END OPENSSH PRIVATE KEY-----
+
+   vault_host_ssh_public_keys:
+     my-workstation: "ssh-ed25519 AAAA... workstation@my-workstation"
+     my-laptop: "ssh-ed25519 AAAA... laptop@my-laptop"
    ```
 
    On first save, `ansible-vault` prompts for a vault password. **Remember it** — you will need it for every `--ask-vault-pass` run.
@@ -352,7 +367,8 @@ The playbook (`ansible/playbook.yml`) runs in two blocks.
 | Task | Effect |
 |------|--------|
 | SSH directory | Ensures `~/.ssh` exists (mode `0700`) |
-| SSH private key | Writes `~/.ssh/id_ed25519` (mode `0600`) from the vault |
+| SSH private key | Writes `~/.ssh/id_ed25519` (mode `0600`) — the per-host key from `vault_host_ssh_private_keys`, or the shared fallback if no per-host entry exists |
+| SSH public key | Writes `~/.ssh/id_ed25519.pub` (mode `0644`) from `vault_host_ssh_public_keys` when the host has one |
 | Bin directory | Ensures `~/.local/bin` exists |
 | Git credentials | Writes `~/.git-credentials` (mode `0600`) from the vault token |
 | Download Discord | Fetches the Discord `.deb` to `/tmp` and installs it via APT |
@@ -467,10 +483,38 @@ The secrets vault (`host_vars/all/secrets.yml`) is common by design — WiFi, NA
   ansible-vault rekey   <file>        # change the vault password
   ```
 
-- The playbook deploys secrets with restrictive modes: `~/.ssh` (0700), `~/.ssh/id_ed25519` (0600), `~/.git-credentials` (0600), `/etc/samba/.smbcredentials` (0600, root-owned).
+- The playbook deploys secrets with restrictive modes: `~/.ssh` (0700), `~/.ssh/id_ed25519` (0600), `~/.ssh/id_ed25519.pub` (0644), `~/.git-credentials` (0600), `/etc/samba/.smbcredentials` (0600, root-owned).
 - The Git token used by `setup.sh` writes `~/.git-credentials` with mode `0600`. It is also the token used for cloning — if you rotate it, run the playbook again or rewrite the file.
-- **Do not** commit decrypted vault files, plaintext `.env`-style secrets, or your real SSH private key anywhere else. The SSH key in the vault is deployed to `~/.ssh/id_ed25519` on each machine automatically.
+- **Do not** commit decrypted vault files, plaintext `.env`-style secrets, or your real SSH private key anywhere else. SSH keys are deployed from the vault per host — the matching key is written to `~/.ssh/id_ed25519` on each machine automatically.
 - Back up your vault password in a password manager. Losing it means you cannot decrypt the secrets file.
+
+### SSH key lifecycle (per-host keys in the vault)
+
+SSH keypairs are stored in the vault, keyed by inventory hostname. On every run the playbook deploys the matching host's key to `~/.ssh/id_ed25519` (and its `.pub` half), so **reprovisioning a machine restores its exact SSH identity** — GitHub and NAS access survive a wipe and reinstall.
+
+1. **Generate** a keypair on the machine (or reuse an existing one):
+
+   ```bash
+   ssh-keygen -t ed25519 -C "$(whoami)@$(hostname)" -f ~/.ssh/id_ed25519 -N ""
+   ```
+
+2. **Capture it into the vault** — the key's dict key must match the host's entry in `ansible/inventory.ini`:
+
+   ```bash
+   ansible-vault edit ansible/host_vars/all/secrets.yml
+   ```
+
+   Paste the private key under `vault_host_ssh_private_keys.<hostname>` and the `.pub` content under `vault_host_ssh_public_keys.<hostname>`.
+
+3. **Register the public key** with GitHub (or your NAS) the first time — `gh ssh-key add ~/.ssh/id_ed25519.pub`, or paste it under GitHub → Settings → SSH and GPG keys.
+
+4. **Reprovisioning** — wipe and reinstall the machine, then run `./setup.sh`. The playbook restores `~/.ssh/id_ed25519` + `.pub` from the vault automatically; GitHub and NAS access work immediately with no re-registration.
+
+Notes:
+
+- A host with no per-host entry falls back to the legacy shared `vault_ssh_private_key` (if present), and the public-key task is skipped.
+- Adding a **new** machine: generate a fresh keypair for it (don't reuse another host's key), add it to the vault under its hostname, register its `.pub` once.
+- The key is deployed on every run and overwrites whatever is on disk — that is the point (drift-free). Generate keys on the machine *after* the playbook, or capture the existing key into the vault first.
 
 ---
 
@@ -513,6 +557,9 @@ chmod 600 ~/.git-credentials
 
 **My NAS shares don't mount**
 Check the mount anchor directories exist (`/mnt/nas/nfs`, `/mnt/nas/smb`) and that the `.mount`/`.automount` units are active: `systemctl list-units | grep mnt-nas`. Then `ls /mnt/nas/nfs` to trigger the automount. Verify the share addresses in `host_vars/all/vars.yml` match your NAS.
+
+**SSH key not restored after a reinstall / wrong key on disk**
+The per-host key lookup is keyed by `inventory_hostname`. If `~/.ssh/id_ed25519` comes back wrong or empty, check that the host's name in `ansible/inventory.ini` exactly matches the key's dict key in `vault_host_ssh_public_keys`/`vault_host_ssh_private_keys`. No per-host entry → the playbook falls back to `vault_ssh_private_key`, and if that is also empty the tasks are skipped entirely. Capture the key with the [SSH key lifecycle](#ssh-key-lifecycle-per-host-keys-in-the-vault) steps and re-run `infra-apply-system`.
 
 **Rollback / teardown**
 Ansible is idempotent — it converges *towards* the declared state but won't uninstall packages on its own. To revert a change, edit the repository, push, and re-apply. To fully remove a piece of software, remove it from the playbook (or Nix) and purge it manually on the machine; Nix rolls back easily with `home-manager generations` + `home-manager switch --generation N`.
