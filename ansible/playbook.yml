@@ -1,0 +1,209 @@
+---
+- name: Converge System and Hardware Environment Locally
+  hosts: ubuntu
+  gather_facts: true
+
+  tasks:
+    # ====================================================
+    # SECTION A: PRIVILEGED CORE PROVISIONING (become: true)
+    # ====================================================
+    - name: Execute system configuration blocks requiring root access
+      become: true
+      block:
+        - name: Update apt index cache and pull core display components
+          ansible.builtin.apt:
+            name: [sway, swaylock, swayidle, xwayland, seatd, dbus-x11, network-manager]
+            state: present
+            update_cache: true
+
+        - name: Provision native proprietary graphics drivers
+          ansible.builtin.apt:
+            name: nvidia-driver-595
+            state: present
+          when: install_nvidia | bool
+
+        - name: Configure PipeWire for Wayland native audio management
+          ansible.builtin.apt:
+            name: [pipewire, pipewire-pulse, wireplumber]
+            state: present
+
+        - name: Bind user account to critical hardware execution groups
+          ansible.builtin.user:
+            name: "{{ ansible_env.USER if ansible_env.USER != 'root' else ansible_user }}"
+            append: true
+            groups: [video, input]
+
+        - name: Launch local hardware session daemon
+          ansible.builtin.systemd:
+            name: seatd
+            enabled: true
+            state: started
+
+        - name: Configure local home wireless network profiles
+          community.general.nmcli:
+            conn_name: "Home-WiFi"
+            type: wifi
+            ssid: "MyHomeNetworkSSID"
+            wifi_sec:
+              key-mgmt: wpa-psk
+              psk: "{{ vault_home_wifi_password }}"
+            state: present
+
+        - name: Setup lightweight display manager gateway
+          ansible.builtin.apt:
+            name: [greetd, cage]
+            state: present
+
+        - name: Deploy greetd direct console bypass loop
+          ansible.builtin.copy:
+            dest: /etc/greetd/config.toml
+            mode: '0644'
+            content: |
+              [terminal]
+              vt = 1
+              [default_session]
+              command = "cage agreety --cmd sway"
+              user = "greeter"
+
+        - name: Enable display daemon boot target hooks
+          ansible.builtin.systemd:
+            name: greetd
+            enabled: true
+            state: restarted
+
+        - name: Setup remote storage driver requirements
+          ansible.builtin.apt:
+            name: [nfs-common, cifs-utils]
+            state: present
+
+        - name: Generate local network mounting anchors
+          ansible.builtin.file:
+            path: "{{ item }}"
+            state: directory
+            mode: '0755'
+          loop: ["{{ nfs_local_path }}", "{{ smb_local_path }}"]
+
+        - name: Deploy restricted Samba password file assets
+          ansible.builtin.copy:
+            dest: /etc/samba/.smbcredentials
+            mode: '0600'
+            owner: root
+            group: root
+            content: |
+              username={{ vault_smb_username }}
+              password={{ vault_smb_password }}
+
+        - name: Generate systemd on-demand mounting configuration scripts
+          ansible.builtin.copy:
+            dest: "/etc/systemd/system/{{ item.file }}"
+            mode: '0644'
+            content: "{{ item.content }}"
+          loop:
+            - file: mnt-nas-nfs.mount
+              content: |
+                [Unit]
+                Description=Automounted NFS Share
+                [Mount]
+                What={{ nfs_share_server }}:{{ nfs_share_src }}
+                Where={{ nfs_local_path }}
+                Type=nfs
+                Options=rw,soft,intr,noatime,timeo=14
+            - file: mnt-nas-nfs.automount
+              content: |
+                [Unit]
+                Description=NFS Automount Trigger
+                [Automount]
+                Where={{ nfs_local_path }}
+                TimeoutIdleSec=300
+                [Install]
+                WantedBy=multi-user.target
+            - file: mnt-nas-smb.mount
+              content: |
+                [Unit]
+                Description=Automounted Samba Share
+                [Mount]
+                What={{ smb_share_src }}
+                Where={{ smb_local_path }}
+                Type=cifs
+                Options=credentials=/etc/samba/.smbcredentials,iocharset=utf8,rw,uid=1000,gid=1000,nofail
+            - file: mnt-nas-smb.automount
+              content: |
+                [Unit]
+                Description=Samba Automount Trigger
+                [Automount]
+                Where={{ smb_local_path }}
+                TimeoutIdleSec=300
+                [Install]
+                WantedBy=multi-user.target
+
+        - name: Force systemd definition re-index and engage triggers
+          ansible.builtin.systemd:
+            daemon_reload: true
+
+        - name: Start active network intercept targets
+          ansible.builtin.systemd:
+            name: "{{ item }}"
+            enabled: true
+            state: started
+          loop: [mnt-nas-nfs.automount, mnt-nas-smb.automount]
+
+        - name: Activate laptop battery preservation layers
+          ansible.builtin.systemd:
+            name: tlp
+            enabled: true
+            state: started
+          when: is_laptop | bool
+
+    # ====================================================
+    # SECTION B: USER SPACE APPLICATION CONFIGURATION (become: false)
+    # ====================================================
+    - name: Run tasks under user context
+      become: false
+      block:
+        - name: Ensure target .ssh folder contains valid system masks
+          ansible.builtin.file:
+            path: "{{ ansible_env.HOME }}/.ssh"
+            state: directory
+            mode: '0700'
+
+        - name: Map user secure private encryption keys from Vault
+          ansible.builtin.copy:
+            dest: "{{ ansible_env.HOME }}/.ssh/id_ed25519"
+            content: "{{ vault_ssh_private_key }}"
+            mode: '0600'
+
+        - name: Construct user profile binary path anchors
+          ansible.builtin.file:
+            path: "{{ ansible_env.HOME }}/.local/bin"
+            state: directory
+            mode: '0755'
+
+        - name: Deploy secure local Git token storage files
+          ansible.builtin.copy:
+            dest: "{{ ansible_env.HOME }}/.git-credentials"
+            mode: '0600'
+            content: |
+              https://oauth2:{{ vault_git_token }}@github.com
+              https://oauth2:{{ vault_git_token }}@gitlab.com
+
+        - name: "Download external binaries (Example: Discord)"
+          ansible.builtin.get_url:
+            url: "https://discord.com/api/download?platform=linux&format=deb"
+            dest: "/tmp/discord.deb"
+            mode: '0644'
+          register: user_deb_dl
+
+        - name: Install non-Nix packages via system-apt handles
+          ansible.builtin.apt:
+            deb: "/tmp/discord.deb"
+            state: present
+          become: true
+          when: user_deb_dl.changed
+
+        - name: "Automate non-packaged vendor scripts (Example: Rustup)"
+          ansible.builtin.shell: |
+            set -o pipefail
+            curl --proto '=https' --tlsv1.2 -sSf https://rustup.rs | sh -s -- -y --no-modify-path
+          args:
+            creates: "{{ ansible_env.HOME }}/.cargo/bin/rustc"
+            executable: /bin/bash

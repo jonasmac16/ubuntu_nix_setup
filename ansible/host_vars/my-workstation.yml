@@ -1,0 +1,4 @@
+---
+is_laptop: false
+install_nvidia: true
+additional_packages: []

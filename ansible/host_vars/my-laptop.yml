@@ -1,0 +1,6 @@
+---
+is_laptop: true
+install_nvidia: false
+additional_packages:
+  - tlp
+  - powertop

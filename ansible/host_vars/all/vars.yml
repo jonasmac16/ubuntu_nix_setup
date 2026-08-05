@@ -1,0 +1,15 @@
+---
+# External storage infrastructure configurations
+nfs_share_server: "192.168.1.100"
+nfs_share_src: "/volume1/nfs_data"
+nfs_local_path: "/mnt/nas/nfs"
+
+smb_share_server: "192.168.1.100"
+smb_share_src: "//192.168.1.100/smb_data"
+smb_local_path: "/mnt/nas/smb"
+
+# Machine-agnostic defaults. Apply to every machine unless overridden
+# by a host-specific file in host_vars/<hostname>.yml
+is_laptop: false
+install_nvidia: false
+additional_packages: []

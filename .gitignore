@@ -1,0 +1,10 @@
+# Block configuration lock strings
+.ansible-retry
+*.retry
+
+# Strict enforcement block for plain text vault targets
+ansible/host_vars/all/secrets.yml
+
+# Nix environment compilation buffers
+result
+.nix-profile
