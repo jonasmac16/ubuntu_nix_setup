@@ -71,81 +71,87 @@
             enabled: true
             state: restarted
 
-        - name: Setup remote storage driver requirements
-          ansible.builtin.apt:
-            name: [nfs-common, cifs-utils]
-            state: present
+        # ====================================================
+        # DISABLED: NAS SMB/NFS automount setup.
+        # Kept as a reminder — re-enable these tasks (and the
+        # matching variables in host_vars/all/vars.yml, plus the
+        # symlinks in nix/home.nix) when the NAS is available.
+        # ====================================================
+        # - name: Setup remote storage driver requirements
+        #   ansible.builtin.apt:
+        #     name: [nfs-common, cifs-utils]
+        #     state: present
 
-        - name: Generate local network mounting anchors
-          ansible.builtin.file:
-            path: "{{ item }}"
-            state: directory
-            mode: '0755'
-          loop: ["{{ nfs_local_path }}", "{{ smb_local_path }}"]
+        # - name: Generate local network mounting anchors
+        #   ansible.builtin.file:
+        #     path: "{{ item }}"
+        #     state: directory
+        #     mode: '0755'
+        #   loop: ["{{ nfs_local_path }}", "{{ smb_local_path }}"]
 
-        - name: Deploy restricted Samba password file assets
-          ansible.builtin.copy:
-            dest: /etc/samba/.smbcredentials
-            mode: '0600'
-            owner: root
-            group: root
-            content: |
-              username={{ vault_smb_username }}
-              password={{ vault_smb_password }}
+        # - name: Deploy restricted Samba password file assets
+        #   ansible.builtin.copy:
+        #     dest: /etc/samba/.smbcredentials
+        #     mode: '0600'
+        #     owner: root
+        #     group: root
+        #     content: |
+        #       username={{ vault_smb_username }}
+        #       password={{ vault_smb_password }}
 
-        - name: Generate systemd on-demand mounting configuration scripts
-          ansible.builtin.copy:
-            dest: "/etc/systemd/system/{{ item.file }}"
-            mode: '0644'
-            content: "{{ item.content }}"
-          loop:
-            - file: mnt-nas-nfs.mount
-              content: |
-                [Unit]
-                Description=Automounted NFS Share
-                [Mount]
-                What={{ nfs_share_server }}:{{ nfs_share_src }}
-                Where={{ nfs_local_path }}
-                Type=nfs
-                Options=rw,soft,intr,noatime,timeo=14
-            - file: mnt-nas-nfs.automount
-              content: |
-                [Unit]
-                Description=NFS Automount Trigger
-                [Automount]
-                Where={{ nfs_local_path }}
-                TimeoutIdleSec=300
-                [Install]
-                WantedBy=multi-user.target
-            - file: mnt-nas-smb.mount
-              content: |
-                [Unit]
-                Description=Automounted Samba Share
-                [Mount]
-                What={{ smb_share_src }}
-                Where={{ smb_local_path }}
-                Type=cifs
-                Options=credentials=/etc/samba/.smbcredentials,iocharset=utf8,rw,uid=1000,gid=1000,nofail
-            - file: mnt-nas-smb.automount
-              content: |
-                [Unit]
-                Description=Samba Automount Trigger
-                [Automount]
-                Where={{ smb_local_path }}
-                TimeoutIdleSec=300
-                [Install]
-                WantedBy=multi-user.target
+        # - name: Generate systemd on-demand mounting configuration scripts
+        #   ansible.builtin.copy:
+        #     dest: "/etc/systemd/system/{{ item.file }}"
+        #     mode: '0644'
+        #     content: "{{ item.content }}"
+        #   loop:
+        #     - file: mnt-nas-nfs.mount
+        #       content: |
+        #         [Unit]
+        #         Description=Automounted NFS Share
+        #         [Mount]
+        #         What={{ nfs_share_server }}:{{ nfs_share_src }}
+        #         Where={{ nfs_local_path }}
+        #         Type=nfs
+        #         Options=rw,soft,intr,noatime,timeo=14
+        #     - file: mnt-nas-nfs.automount
+        #       content: |
+        #         [Unit]
+        #         Description=NFS Automount Trigger
+        #         [Automount]
+        #         Where={{ nfs_local_path }}
+        #         TimeoutIdleSec=300
+        #         [Install]
+        #         WantedBy=multi-user.target
+        #     - file: mnt-nas-smb.mount
+        #       content: |
+        #         [Unit]
+        #         Description=Automounted Samba Share
+        #         [Mount]
+        #         What={{ smb_share_src }}
+        #         Where={{ smb_local_path }}
+        #         Type=cifs
+        #         Options=credentials=/etc/samba/.smbcredentials,iocharset=utf8,rw,uid=1000,gid=1000,nofail
+        #     - file: mnt-nas-smb.automount
+        #       content: |
+        #         [Unit]
+        #         Description=Samba Automount Trigger
+        #         [Automount]
+        #         Where={{ smb_local_path }}
+        #         TimeoutIdleSec=300
+        #         [Install]
+        #         WantedBy=multi-user.target
 
-        - name: Force systemd definition re-index and engage triggers
-          ansible.builtin.systemd:
-            daemon_reload: true
+        # - name: Force systemd definition re-index and engage triggers
+        #   ansible.builtin.systemd:
+        #     daemon_reload: true
 
-        - name: Start active network intercept targets
-          ansible.builtin.systemd:
-            name: "{{ item }}"
-            enabled: true
-            state: started
-          loop: [mnt-nas-nfs.automount, mnt-nas-smb.automount]
+        # - name: Start active network intercept targets
+        #   ansible.builtin.systemd:
+        #     name: "{{ item }}"
+        #     enabled: true
+        #     state: started
+        #   loop: [mnt-nas-nfs.automount, mnt-nas-smb.automount]
 
         - name: Activate laptop battery preservation layers
           ansible.builtin.systemd:

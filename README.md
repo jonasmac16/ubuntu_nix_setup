@@ -111,7 +111,7 @@ nix-ubuntu-infra/
 - **OS**: Ubuntu 26.04 LTS (Resolute Raccoon). A **minimal / server** install is recommended — the playbook installs every desktop component itself, so a full desktop image would only duplicate things. Network access is required during install.
 - **User account**: You need a user in the `sudo` group (created during Ubuntu install).
 - **Credentials**: A Git personal access token (PAT) for the private repository containing this tree, plus real values for the secrets in the vault (WiFi password, NAS/SMB credentials, Git token/email, an SSH private key).
-- **Hardware expectations**: The sample config assumes a NAS at `192.168.1.100` exporting an NFS share (`/volume1/nfs_data`) and an SMB share (`smb_data`). Adjust `host_vars/all/vars.yml` if your storage lives elsewhere.
+- **Hardware expectations**: The sample config includes NAS SMB/NFS automounts, but they currently ship **disabled** — the relevant tasks in `ansible/playbook.yml`, the paths in `host_vars/all/vars.yml`, and the `~/NAS-*` symlinks in `nix/home.nix` are commented out as a reminder. Re-enable them when your storage is available; the assumed layout is a NAS at `192.168.1.100` exporting an NFS share (`/volume1/nfs_data`) and an SMB share (`smb_data`).
 
 Everything else (`git`, `curl`, `ansible`) is installed by `setup.sh` on the fresh machine.
 
@@ -352,7 +352,7 @@ sudo reboot
 - **Waybar** status bar at the top (started automatically)
 - **Mako** desktop notifications
 
-Your NAS shares are mounted at `~/NAS-NFS` and `~/NAS-SMB` (symlinks into `/mnt/nas/...`, automounted on access by systemd).
+NAS SMB/NFS mounts are currently disabled; the `~/NAS-NFS` / `~/NAS-SMB` symlinks are commented out in `nix/home.nix` until the mounts are re-enabled (see the bootstrap section below).
 
 ---
 
@@ -381,9 +381,9 @@ The playbook (`ansible/playbook.yml`) runs in two blocks.
 | Enable `seatd` | Starts the seat management daemon (login-session-free input/DRM access) |
 | Configure Home WiFi | Creates a `Home-WiFi` network profile via `nmcli` using the vault password |
 | Install display manager | `greetd` + `cage`, then deploys `/etc/greetd/config.toml` that boots straight into `sway` and restarts the service |
-| Install storage clients | `nfs-common`, `cifs-utils`; creates `/mnt/nas/nfs` and `/mnt/nas/smb` |
-| Deploy SMB credentials | `/etc/samba/.smbcredentials` (mode `0600`, root-owned) from vault values |
-| Deploy automount units | Writes `mnt-nas-nfs.mount`/`.automount` and `mnt-nas-smb.mount`/`.automount` to `/etc/systemd/system/`, runs `daemon_reload`, enables + starts both automounts (mount-on-access, idle-unmount after 300 s) |
+| Install storage clients | `nfs-common`, `cifs-utils`; creates `/mnt/nas/nfs` and `/mnt/nas/smb` — **currently disabled** (commented out) |
+| Deploy SMB credentials | `/etc/samba/.smbcredentials` (mode `0600`, root-owned) from vault values — **currently disabled** (commented out) |
+| Deploy automount units | Writes `mnt-nas-nfs.mount`/`.automount` and `mnt-nas-smb.mount`/`.automount` to `/etc/systemd/system/`, runs `daemon_reload`, enables + starts both automounts (mount-on-access, idle-unmount after 300 s) — **currently disabled** (commented out) |
 | Enable TLP | Only when `is_laptop: true` |
 
 **Section B — user space (`become: false`):**
@@ -489,7 +489,7 @@ host_vars/all/*              <- COMMON  (applies to every machine)
 
 Ansible merges `host_vars/all/vars.yml` into every host, then overlays `host_vars/<hostname>.yml` for the matching host (specific values win).
 
-- Put things that are true everywhere in `host_vars/all/vars.yml` (NAS addresses, share paths, and the machine-agnostic defaults `is_laptop`/`install_nvidia`/`additional_packages`).
+- Put things that are true everywhere in `host_vars/all/vars.yml` (NAS share paths when mounts are enabled, and the machine-agnostic defaults `is_laptop`/`install_nvidia`/`additional_packages`).
 - Put things that differ per machine in `host_vars/<hostname>.yml` (laptop vs desktop flags, extra packages).
 
 The secrets vault (`host_vars/all/secrets.yml`) is common by design — WiFi, NAS and Git credentials are assumed identical across your fleet. If you need per-machine secrets, create `host_vars/<hostname>.yml` mirroring the same variables with a different encryption.
@@ -585,7 +585,7 @@ chmod 600 ~/.git-credentials
 ```
 
 **My NAS shares don't mount**
-Check the mount anchor directories exist (`/mnt/nas/nfs`, `/mnt/nas/smb`) and that the `.mount`/`.automount` units are active: `systemctl list-units | grep mnt-nas`. Then `ls /mnt/nas/nfs` to trigger the automount. Verify the share addresses in `host_vars/all/vars.yml` match your NAS.
+NAS SMB/NFS mounts ship **disabled** (commented out) — check they've been re-enabled first. If you're actively troubleshooting after enabling: check the mount anchor directories exist (`/mnt/nas/nfs`, `/mnt/nas/smb`) and that the `.mount`/`.automount` units are active: `systemctl list-units | grep mnt-nas`. Then `ls /mnt/nas/nfs` to trigger the automount. Verify the share addresses in `host_vars/all/vars.yml` match your NAS.
 
 **SSH key not restored after a reinstall / wrong key on disk**
 The per-host key lookup is keyed by `inventory_hostname`. If `~/.ssh/id_ed25519` comes back wrong or empty, check that the host's name in `ansible/inventory.ini` exactly matches the key's dict key in `vault_host_ssh_public_keys`/`vault_host_ssh_private_keys`. No per-host entry → the playbook falls back to `vault_ssh_private_key`, and if that is also empty the tasks are skipped entirely. Capture the key with the [SSH key lifecycle](#ssh-key-lifecycle-per-host-keys-in-the-vault) steps and re-run `infra-apply-system`.
