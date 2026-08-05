@@ -27,7 +27,7 @@
     enable = true;
     historyControl = [ "ignoredups" "ignorespace" ];
     shellAliases = {
-      infra-apply-system = "ansible-playbook -i ansible/inventory.ini ansible/playbook.yml --ask-become-pass --ask-vault-pass";
+      infra-apply-system = "ansible-playbook -i ansible/inventory.ini ansible/playbook.yml -l \"$(hostname)\" --ask-become-pass --ask-vault-pass";
       infra-apply-user   = "home-manager switch";
       infra-sync-all     = "git pull origin main && infra-apply-system && infra-apply-user";
 

@@ -96,8 +96,8 @@ nix-ubuntu-infra/
 │       ├── all/               # COMMON configuration — applies to every machine
 │       │   ├── vars.yml       # Non-sensitive values + machine-agnostic defaults
 │       │   └── secrets.yml    # ANSIBLE-VAULT ENCRYPTED secrets (committed, never plaintext)
-│       ├── my-workstation.yml # Host-specific overrides (example: desktop)
-│       └── my-laptop.yml      # Host-specific overrides (example: laptop)
+│       ├── workstation.yml  # Host-specific overrides (example: desktop, named after hostname)
+│       └── thinkpad-x1.yml  # Host-specific overrides (example: laptop)
 │
 └── nix/                       # User profile convergence layer
     ├── home.nix               # Central Home Manager gateway
@@ -157,17 +157,20 @@ Open `ansible/inventory.ini`. It ships with two **example** hosts:
 
 ```ini
 [workstations]
-my-workstation ansible_host=localhost ansible_connection=local
+workstation ansible_host=localhost ansible_connection=local
 
 [laptops]
-my-laptop ansible_host=localhost ansible_connection=local
+thinkpad-x1 ansible_host=localhost ansible_connection=local
 
 [ubuntu:children]
 workstations
 laptops
 ```
 
-The `[ubuntu:children]` group is what `setup.sh` targets (`-l ubuntu`), so **every host listed here gets configured on every run**. For a real single machine, replace the examples with your own entry:
+**How targeting works:** every host is `ansible_connection=local`, so the playbook **never connects over the network** — each entry simply means "apply this machine's config on this physical box". The playbook, `setup.sh`, and the `infra-apply-system` alias all limit the run to the **current machine** with `-l "$(hostname)"`. That only matches an inventory entry if the entry name equals the machine's `hostname` output.
+
+1. Confirm your machine's hostname: `hostname` (e.g. `workstation`).
+2. Make sure there is an inventory entry with **exactly that name**. The shipped `workstation` entry matches this machine; rename the entries (and matching files in `host_vars/`) for your real machines:
 
 ```ini
 [workstations]
@@ -181,18 +184,19 @@ workstations
 laptops
 ```
 
-Remove (or comment out) the example hosts you don't use. If you run this config on only one machine, keep only that one entry — otherwise both host configurations would be applied on the same machine.
+3. Keep one entry per physical machine. A machine only ever applies its own entry — running `-l "$(hostname)"` on `ryzen-desktop` never configures `thinkpad-x1`, and vice versa.
+
+> If a host's `hostname` is not in the inventory, `setup.sh` aborts with a clear message listing the fix; Ansible would otherwise report `hosts list is empty`.
 
 ### Step 4 — Create your host-specific configuration
 
-Copy the appropriate example to your machine's hostname:
+The example files are already named after real hostnames. If a machine's hostname differs, copy the closest example to that name (or rename it in place):
 
 ```bash
-# For a desktop
-cp ansible/host_vars/my-workstation.yml ansible/host_vars/ryzen-desktop.yml
+# A desktop whose hostname is `ryzen-desktop`:
+cp ansible/host_vars/workstation.yml ansible/host_vars/ryzen-desktop.yml
 
-# For a laptop
-cp ansible/host_vars/my-laptop.yml ansible/host_vars/thinkpad-x1.yml
+# A laptop whose hostname is `thinkpad-x1`: the example already matches — edit it directly.
 ```
 
 Each file only needs to contain the **overrides** relative to the common configuration:
@@ -214,7 +218,7 @@ The fields:
 | `install_nvidia` | Installs `nvidia-driver-595` | `false` |
 | `additional_packages` | Extra APT packages for this machine | `[]` |
 
-You can delete the example files (`my-workstation.yml`, `my-laptop.yml`) once your real per-host files exist, or keep them as templates.
+You can delete example files you don't use (e.g. `thinkpad-x1.yml` if you have no laptop) once your real per-host files exist, or keep them as templates.
 
 ### Step 5 — Create and encrypt the secrets vault
 
@@ -250,18 +254,18 @@ The file `ansible/host_vars/all/secrets.yml` holds secret values (WiFi password,
      -----END OPENSSH PRIVATE KEY-----
 
    vault_host_ssh_private_keys:    # one entry per machine, keyed by inventory hostname
-     my-workstation: |
+     workstation: |
        -----BEGIN OPENSSH PRIVATE KEY-----
-       <my-workstation private key data>
+       <workstation private key data>
        -----END OPENSSH PRIVATE KEY-----
-     my-laptop: |
+     thinkpad-x1: |
        -----BEGIN OPENSSH PRIVATE KEY-----
-       <my-laptop private key data>
+       <thinkpad-x1 private key data>
        -----END OPENSSH PRIVATE KEY-----
 
    vault_host_ssh_public_keys:
-     my-workstation: "ssh-ed25519 AAAA... workstation@my-workstation"
-     my-laptop: "ssh-ed25519 AAAA... laptop@my-laptop"
+     workstation: "ssh-ed25519 AAAA... workstation@workstation"
+     thinkpad-x1: "ssh-ed25519 AAAA... laptop@thinkpad-x1"
    ```
 
 3. Verify the file on disk is still encrypted (content starts with `$ANSIBLE_VAULT;...`):
@@ -331,7 +335,7 @@ cd ~/src/nix-ubuntu-infra
 
 The script runs each phase with an on-screen `[-]` label. See [What the Bootstrap Actually Does](#what-the-bootstrap-actually-does) for the phase-by-phase breakdown, including what it looks like when everything succeeds.
 
-> If you prefer to run the phases manually (for example, to watch each one), execute them in order: install `ansible`, run `ansible-playbook -i ansible/inventory.ini ansible/playbook.yml -l ubuntu --ask-become-pass --ask-vault-pass`, then install Nix, then build Home Manager. `setup.sh` is just a wrapper around those exact steps.
+> If you prefer to run the phases manually (for example, to watch each one), execute them in order: install `ansible`, run `ansible-playbook -i ansible/inventory.ini ansible/playbook.yml -l "$(hostname)" --ask-become-pass --ask-vault-pass`, then install Nix, then build Home Manager. `setup.sh` is just a wrapper around those exact steps.
 
 ### Step 9 — First login into Sway
 
@@ -463,13 +467,14 @@ infra-save
 ## Adding a Second Machine
 
 1. On the new machine: `git clone https://github.com/<you>/nix-ubuntu-infra.git`.
-2. Repeat [Step 3](#step-3--register-your-machine-in-the-inventory) — add this machine's hostname to the appropriate group in `inventory.ini`. Make sure the first machine is **not** also listed, or it will be reconfigured too.
+2. Repeat [Step 3](#step-3--register-your-machine-in-the-inventory) — add an inventory entry named exactly after this machine's `hostname` in the appropriate group (`[workstations]` or `[laptops]`). Each machine self-selects via `-l "$(hostname)"`, so other machines' entries are never applied on it.
 3. Repeat [Step 4](#step-4--create-your-host-specific-configuration) — create `host_vars/<hostname>.yml` for the new machine.
-4. Ensure the vault password is available on the new machine — either place `~/.ansible/vault_pass` (mode `0600`) or rely on the `--ask-vault-pass` prompt. The encrypted secrets themselves come with the clone; nothing needs to be recreated.
-5. Commit and push the inventory/host-var changes from any machine.
-6. On the new machine: `./setup.sh`, then reboot.
+4. Add the machine's SSH keypair to the vault under its hostname (see the [SSH key lifecycle](#ssh-key-lifecycle-per-host-keys-in-the-vault)).
+5. Ensure the vault password is available on the new machine — either place `~/.ansible/vault_pass` (mode `0600`) or rely on the `--ask-vault-pass` prompt. The encrypted secrets themselves come with the clone; nothing needs to be recreated.
+6. Commit and push the inventory/host-var/vault changes from any machine.
+7. On the new machine: `./setup.sh`, then reboot.
 
-From then on, `infra-sync-all` on either machine pulls the latest tree and converges it locally.
+From then on, `infra-sync-all` on either machine pulls the latest tree and converges only the local machine.
 
 ---
 
@@ -542,7 +547,7 @@ Notes:
 ## Troubleshooting & FAQ
 
 **`ERROR! provided hosts list is empty`**
-Your `inventory.ini` has no host in the `[ubuntu]` group, or all entries are commented out. Add your hostname entry (see Step 3).
+The run limited to `-l "$(hostname)"` matched nothing: there is no inventory entry named exactly like this machine's `hostname` (or it is commented out). Add your hostname entry to the appropriate group in `inventory.ini` (see Step 3). `setup.sh` checks this up front and reports it before Ansible runs.
 
 **`Vault password was not provided`**
 Run with `--ask-vault-pass` (the aliases already do), or place the password in `~/.ansible/vault_pass` (mode `0600`) for non-interactive runs. If you just created the vault, make sure the file is actually encrypted (`head -1 ...secrets.yml` should start with `$ANSIBLE_VAULT`).

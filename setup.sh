@@ -20,12 +20,18 @@ echo "https://oauth2:${TX_TOKEN}@gitlab.com" >> ~/.git-credentials
 chmod 600 ~/.git-credentials
 
 # 4. Trigger localized loopback playbook executions
-echo "[-] Executing Ansible hardware execution layers..."
+HOSTNAME_LIMIT="$(hostname)"
+if ! grep -qE "^${HOSTNAME_LIMIT}([[:space:]]|$)" ansible/inventory.ini; then
+    echo "ERROR: this machine's hostname '${HOSTNAME_LIMIT}' is not in ansible/inventory.ini."
+    echo "Add an entry matching 'hostname' so the playbook can self-select this machine."
+    exit 1
+fi
+echo "[-] Executing Ansible hardware execution layers for host '${HOSTNAME_LIMIT}'..."
 VAULT_ARGS="--ask-vault-pass"
 if [ -f "$HOME/.ansible/vault_pass" ]; then
     VAULT_ARGS="--vault-password-file $HOME/.ansible/vault_pass"
 fi
-ansible-playbook -i ansible/inventory.ini ansible/playbook.yml --connection=local -l ubuntu --ask-become-pass $VAULT_ARGS
+ansible-playbook -i ansible/inventory.ini ansible/playbook.yml --connection=local -l "$HOSTNAME_LIMIT" --ask-become-pass $VAULT_ARGS
 
 # 5. Bootstrap standalone Nix layers
 if [ ! -d "/nix" ]; then
