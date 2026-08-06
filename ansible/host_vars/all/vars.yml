@@ -17,6 +17,6 @@ is_laptop: false
 install_nvidia: false
 additional_packages: []
 
-# Corporate VPN gateway (Cisco AnyConnect via openconnect). Non-secret;
-# the username is stored in the vault as vault_anyconnect_user.
-anyconnect_gateway: "vpn.yourorg.example"
+# Corporate VPN (Cisco AnyConnect via openconnect). The gateway and the
+# user-agent are secrets, stored in the vault (vault_anyconnect_gateway /
+# vault_anyconnect_user_agent) and used by the playbook's AnyConnect profile.

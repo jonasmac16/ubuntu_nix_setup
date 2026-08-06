@@ -8,5 +8,9 @@
   home.packages = with pkgs; [
     wdisplays
     solaar
+
+    # Network diagnostics (raw packet capture needs root).
+    nmap
+    tcpdump
   ];
 }

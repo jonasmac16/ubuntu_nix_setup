@@ -10,15 +10,16 @@
     # Java runtime for Zotero's LibreOffice integration and yEd.
     temurin-jre-bin-17
 
-    # British + American English spelling dictionaries. LibreOffice (via
-    # hunspell) picks these up through DICPATH below.
-    hunspellDicts.en_GB
+    # British (-ise spelling) + American English spelling dictionaries.
+    # LibreOffice (via hunspell) picks these up through DICPATH below.
+    # Note: nixpkgs splits British English into en_GB-ise / en_GB-ize.
+    hunspellDicts.en_GB-ise
     hunspellDicts.en_US
   ];
 
   # Point hunspell (used by LibreOffice for spell checking) at the declared
   # dictionaries so en_GB / en_US are selectable in Tools -> Options -> Language.
-  home.sessionVariables.DICPATH = "${pkgs.hunspellDicts.en_GB}/share/hunspell:${pkgs.hunspellDicts.en_US}/share/hunspell";
+  home.sessionVariables.DICPATH = "${pkgs.hunspellDicts.en_GB-ise}/share/hunspell:${pkgs.hunspellDicts.en_US}/share/hunspell";
 
   # Auto-install Zotero's bundled LibreOffice add-in (Zotero_LibreOffice_Integration.oxt)
   # into the user LibreOffice profile via unopkg. Requires a JRE (installed above);

@@ -3,7 +3,7 @@
 {
   programs.ssh = {
     enable = true;
-    matchBlocks = {
+    settings = {
       "nas-endpoint" = {
         hostname = "192.168.1.100";
         user = "storage_admin";
@@ -14,9 +14,11 @@
 
   programs.git = {
     enable = true;
-    userName = "Your Name";
-    userEmail = "you@example.com";
-    extraConfig = {
+    settings = {
+      user = {
+        name = "Your Name";
+        email = "you@example.com";
+      };
       credential.helper = "store --file ~/.git-credentials";
       init.defaultBranch = "main";
       push.autoSetupRemote = true;

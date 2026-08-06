@@ -27,6 +27,30 @@
             name: [pipewire, pipewire-pulse, wireplumber]
             state: present
 
+        - name: Install Wayland desktop system daemons (Bluetooth, disks, polkit)
+          ansible.builtin.apt:
+            name: [bluez, udisks2, polkitd]
+            state: present
+            update_cache: true
+
+        - name: Enable Bluetooth daemon
+          ansible.builtin.systemd:
+            name: bluetooth
+            enabled: true
+            state: started
+
+        - name: Enable disk automount daemon (used by udiskie in the user session)
+          ansible.builtin.systemd:
+            name: udisks2
+            enabled: true
+            state: started
+
+        - name: Enable polkit authorization daemon (used by the polkit-gnome agent)
+          ansible.builtin.systemd:
+            name: polkit
+            enabled: true
+            state: started
+
         - name: Bind user account to critical hardware execution groups
           ansible.builtin.user:
             name: "{{ ansible_env.USER if ansible_env.USER != 'root' else ansible_user }}"
@@ -188,8 +212,8 @@
             type: vpn
             vpn_type: openconnect
             vpn_data:
-              gateway: "{{ anyconnect_gateway }}"
-              user: "{{ vault_anyconnect_user }}"
+              gateway: "{{ vault_anyconnect_gateway }}"
+              user_agent: "{{ vault_anyconnect_user_agent }}"
             state: present
 
         - name: Install Tailscale mesh client

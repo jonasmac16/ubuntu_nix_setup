@@ -106,16 +106,19 @@ nix-ubuntu-infra/
     │   ├── workstation-orcrb.nix  # Desktop-specific packages/settings
     │   └── laptop-xps.nix         # Laptop-specific packages/settings
     └── modules/               # Grouped Nix modules (see "Software profile by module")
-        ├── sway.nix           # Wayland compositor, bar, launcher (common)
+        ├── sway.nix           # Wayland compositor, bar, launcher, keybinds (common)
         ├── shell.nix          # Bash aliases, SSH blocks, Git rules (common)
         ├── browsers.nix       # Firefox (add-ons, CSS, settings) + Chromium (extensions, PWAs)
-        ├── development.nix    # VSCode, Alacritty, opencode, pi.dev, containers, lftp
+        ├── development.nix    # VSCode, Alacritty, Neovim, terminal tools, containers, lftp
         ├── office.nix         # LibreOffice + dicts, Zotero (+ LO add-in), Obsidian, yEd
-        ├── media.nix          # mpv, VLC
-        ├── science.nix        # Fiji, QuPath
+        ├── media.nix          # mpv, VLC, GIMP, ImageMagick, Inkscape
+        ├── science.nix        # Fiji (QuPath removed from nixpkgs)
         ├── files.nix          # Thunar + plugins, sshfs
         ├── security.nix       # Proton Pass, Bitwarden desktop apps
-        └── system.nix         # wdisplays, solaar
+        ├── system.nix         # wdisplays, solaar, nmap, tcpdump
+        ├── desktop.nix        # Wayland desktop essentials (screenshots, clipboard, keyring, portals)
+        ├── backups.nix        # rsync, rclone
+        └── obs-studio.nix     # OBS Studio (imported by laptop-xps.nix only)
 ```
 
 ## Prerequisites
@@ -262,8 +265,9 @@ The file `ansible/host_vars/all/secrets.yml` holds secret values (WiFi password,
    vault_git_token: "github_pat_..._alphanumeric"
    vault_git_email: "you@example.com"
 
-   vault_tailscale_authkey: "tskey-auth-..."   # one-off Tailscale tailnet auth key
-   vault_anyconnect_user: "corp_username"      # Cisco AnyConnect VPN username
+   vault_tailscale_authkey: "tskey-auth-..."          # one-off Tailscale tailnet auth key
+   vault_anyconnect_gateway: "vpn.yourorg.example"    # Cisco AnyConnect VPN gateway
+   vault_anyconnect_user_agent: "Mozilla/5.0 (X11; ...)"  # AnyConnect VPN user agent
 
    vault_ssh_private_key: |        # optional shared fallback (legacy)
      -----BEGIN OPENSSH PRIVATE KEY-----
@@ -396,6 +400,7 @@ The playbook (`ansible/playbook.yml`) runs in two blocks.
 | Install core display components | `sway`, `swaylock`, `swayidle`, `xwayland`, `seatd`, `dbus-x11`, `network-manager` |
 | Install NVIDIA drivers | `nvidia-driver-595` — only when `install_nvidia: true` |
 | Configure PipeWire | `pipewire`, `pipewire-pulse`, `wireplumber` for Wayland-native audio |
+| Install desktop system daemons | `bluez`, `udisks2`, `polkitd` (system APT packages) with `bluetooth`, `udisks2` and `polkit` services enabled — the system side the user-session tools in `nix/modules/desktop.nix` depend on |
 | Bind user to hardware groups | Adds your user to `video`, `input` groups (needed for Wayland input/DRM) |
 | Enable `seatd` | Starts the seat management daemon (login-session-free input/DRM access) |
 | Configure Home WiFi | Creates a `Home-WiFi` network profile via `nmcli` using the vault password |
@@ -533,13 +538,16 @@ User-level software is grouped into functional modules under `nix/modules/`. `co
 | Module | Software |
 |--------|----------|
 | `browsers.nix` | Firefox (add-ons: Proton Pass, Bitwarden, Dark Reader, Consent-O-Matic, Privacy Badger, Tridactyl, Sidebery, Zotero Connector; custom `userChrome`/`userContent` CSS; auto-enabled) and Chromium (extensions: Proton Pass, Bitwarden, Vimium, uBlock Origin, Dark Reader; PWAs for **MS Teams**, **Outlook 365**, **ChatGPT**) |
-| `development.nix` | VSCode (Python/Pylance, Jupyter, Julia, Rainbow CSV, Remote-SSH, Docker, Nix IDE, Prettier, ErrorLens, GitLens, Material Icon Theme), Alacritty, opencode, pi.dev (via npm), quickemu, distrobox, podman, apptainer, lftp |
+| `development.nix` | VSCode (Python/Pylance, Jupyter, Julia, Rainbow CSV, Remote-SSH, Docker, Nix IDE, Prettier, ErrorLens, GitLens, Material Icon Theme), Alacritty, Neovim (minimal init.lua), terminal tools (btop, zoxide, bat, fd, jq, tmux, eza, yazi, lazygit), opencode, pi.dev (via npm), quickemu, distrobox, podman, apptainer, lftp |
 | `office.nix` | LibreOffice (+ en_GB/en_US dictionaries), Zotero (+ JRE and auto-installed LibreOffice add-in), Obsidian, yEd |
-| `media.nix` | mpv, VLC |
-| `science.nix` | Fiji, QuPath |
+| `media.nix` | mpv, VLC, GIMP, ImageMagick, Inkscape |
+| `science.nix` | Fiji (QuPath was removed from nixpkgs; see the commented entry in the module) |
 | `files.nix` | Thunar (+ volume/archive/media-tag plugins, thumbnails), gvfs, sshfs |
 | `security.nix` | Proton Pass, Bitwarden Desktop (standalone apps) |
-| `system.nix` | wdisplays (Wayland display-settings GUI), solaar (Logitech) |
+| `system.nix` | wdisplays (Wayland display-settings GUI), solaar (Logitech), nmap, tcpdump |
+| `desktop.nix` | Wayland desktop essentials: grim/slurp/swappy (screenshots), cliphist + wl-clipboard (clipboard history), pavucontrol + playerctl + brightnessctl (audio/media/brightness), blueman, seahorse, polkit-gnome agent, udiskie auto-mount, gnome-keyring, XDG desktop portals (gtk + wlr) |
+| `backups.nix` | rsync, rclone |
+| `obs-studio.nix` | OBS Studio — imported by `laptop-xps.nix` only, so it is **not** on the workstation |
 
 System-level equivalents live in the Ansible playbook:
 
@@ -547,7 +555,7 @@ System-level equivalents live in the Ansible playbook:
 |----------|-------|
 | SSH server (`openssh-server` + daemon) | `ansible/playbook.yml` — remote services |
 | Tailscale (install, service, `tailscale up`) | `ansible/playbook.yml` — remote services (authkey from vault) |
-| Corporate VPN (NetworkManager openconnect + central `AnyConnect` profile) | `ansible/playbook.yml` — remote services (gateway in vars, user in vault) |
+| Corporate VPN (NetworkManager openconnect + central `AnyConnect` profile) | `ansible/playbook.yml` — remote services (gateway + user-agent from vault) |
 | SMB/NFS client tools (`cifs-utils`, `nfs-common`) | `ansible/playbook.yml` — remote services |
 | Tanium / Sophos EDR | `ansible/playbook.yml` — endpoint protection (guarded on `vendor/`) |
 

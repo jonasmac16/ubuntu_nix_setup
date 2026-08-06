@@ -18,7 +18,33 @@
       startup = [
         { command = "waybar"; }
         { command = "mako"; }
+        # polkit authentication agent: needed for privileged prompts (udisks2
+        # mounts, package installs) from Wayland apps. See modules/desktop.nix.
+        { command = "${pkgs.polkit_gnome}/libexec/polkit-gnome-authentication-agent-1"; }
       ];
+
+      # Screenshots, clipboard history, volume and media controls.
+      # Home Manager wraps the sway defaults in mkOptionDefault, so the
+      # bindings below ADD to the defaults (except Super+V, which replaces the
+      # default "splitv").
+      keybindings = {
+        # Screenshots: region (Print), full screen (Shift+Print); edited in swappy.
+        "Print" = ''exec grim -g "$(slurp)" - | swappy -f -'';
+        "Shift+Print" = "exec grim - | swappy -f -";
+
+        # Clipboard history picker (cliphist + wofi).
+        "Mod4+v" = "exec cliphist list | wofi --dmenu | cliphist decode | wl-copy";
+
+        # Volume via PipeWire (pactl talks to pipewire-pulse).
+        "XF86AudioRaiseVolume" = "exec pactl set-sink-volume @DEFAULT_SINK@ +5%";
+        "XF86AudioLowerVolume" = "exec pactl set-sink-volume @DEFAULT_SINK@ -5%";
+        "XF86AudioMute" = "exec pactl set-sink-mute @DEFAULT_SINK@ toggle";
+
+        # Media playback controls.
+        "XF86AudioPlay" = "exec playerctl play-pause";
+        "XF86AudioNext" = "exec playerctl next";
+        "XF86AudioPrev" = "exec playerctl previous";
+      };
     };
   };
 

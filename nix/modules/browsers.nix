@@ -59,27 +59,34 @@
       { id = "cjpalhdlnbpafiamejdnhcphjbkeiagm"; } # uBlock Origin
       { id = "eimadpbcbfnmbkopoojfekhnkhdbieeh"; } # Dark Reader
     ];
+  };
 
-    # Declarative progressive web apps (PWAs) for work / productivity sites.
-    extraOpts.WebAppInstallForceList = [
-      {
-        custom_name = "MS Teams";
-        url = "https://teams.microsoft.com/";
-        default_launch_container = "window";
-        create_desktop_shortcut = true;
-      }
-      {
-        custom_name = "Outlook 365";
-        url = "https://outlook.office.com/";
-        default_launch_container = "window";
-        create_desktop_shortcut = true;
-      }
-      {
-        custom_name = "ChatGPT";
-        url = "https://chatgpt.com/";
-        default_launch_container = "window";
-        create_desktop_shortcut = true;
-      }
-    ];
+  # Declarative progressive web apps (PWAs) for work / productivity sites.
+  # Home Manager's chromium module no longer exposes `extraOpts`, so the
+  # WebAppInstallForceList policy is written to Chromium's user-level managed
+  # policy directory (read on every Linux launch).
+  home.file.".config/chromium/policies/managed/pwas.json" = {
+    text = builtins.toJSON {
+      WebAppInstallForceList = [
+        {
+          custom_name = "MS Teams";
+          url = "https://teams.microsoft.com/";
+          default_launch_container = "window";
+          create_desktop_shortcut = true;
+        }
+        {
+          custom_name = "Outlook 365";
+          url = "https://outlook.office.com/";
+          default_launch_container = "window";
+          create_desktop_shortcut = true;
+        }
+        {
+          custom_name = "ChatGPT";
+          url = "https://chatgpt.com/";
+          default_launch_container = "window";
+          create_desktop_shortcut = true;
+        }
+      ];
+    };
   };
 }

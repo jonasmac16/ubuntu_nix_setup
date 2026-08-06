@@ -12,6 +12,17 @@
     ./modules/files.nix
     ./modules/security.nix
     ./modules/system.nix
+    ./modules/desktop.nix
+    ./modules/backups.nix
+  ];
+
+  # NUR overlay. The `nur` channel is added by setup.sh; this overlay exposes it
+  # as `pkgs.nur`, which browsers.nix needs for the Firefox add-ons. Without it
+  # the config would fail at evaluation time with "attribute 'nur' missing".
+  nixpkgs.overlays = [
+    (final: prev: {
+      nur = import <nur> { pkgs = prev; };
+    })
   ];
 
   home.username = "jonas";
