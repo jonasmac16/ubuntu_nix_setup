@@ -538,7 +538,7 @@ User-level software is grouped into functional modules under `nix/modules/`. `co
 | Module | Software |
 |--------|----------|
 | `browsers.nix` | Firefox (add-ons: Proton Pass, Bitwarden, Dark Reader, Consent-O-Matic, Privacy Badger, Tridactyl, Sidebery, Zotero Connector; custom `userChrome`/`userContent` CSS; auto-enabled) and Chromium (extensions: Proton Pass, Bitwarden, Vimium, uBlock Origin, Dark Reader; PWAs for **MS Teams**, **Outlook 365**, **ChatGPT**) |
-| `development.nix` | VSCode (Python/Pylance, Jupyter, Julia, Rainbow CSV, Remote-SSH, Docker, Nix IDE, Prettier, ErrorLens, GitLens, Material Icon Theme), Alacritty, Neovim (minimal init.lua), terminal tools (btop, zoxide, bat, fd, jq, tmux, eza, yazi, lazygit), opencode, pi.dev (via npm), quickemu, distrobox, podman, apptainer, lftp |
+| `development.nix` | VSCode (Python/Pylance, Jupyter, Julia, Rainbow CSV, Remote-SSH, Docker, Nix IDE, Prettier, ErrorLens, GitLens, Material Icon Theme), Alacritty, Neovim (minimal init.lua), terminal tools (btop, zoxide, bat, fd, jq, tmux, eza, yazi, lazygit), opencode, pi-coding-agent, quickemu, distrobox, podman, apptainer, lftp, openssh (sftp) |
 | `office.nix` | LibreOffice (+ en_GB/en_US dictionaries), Zotero (+ JRE and auto-installed LibreOffice add-in), Obsidian, yEd |
 | `media.nix` | mpv, VLC, GIMP, ImageMagick, Inkscape |
 | `science.nix` | Fiji (QuPath was removed from nixpkgs; see the commented entry in the module) |

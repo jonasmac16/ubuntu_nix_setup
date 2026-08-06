@@ -88,6 +88,7 @@
   home.packages = with pkgs; [
     # AI coding agents
     opencode
+    pi-coding-agent
     nodejs_22
 
     # Containers / VMs
@@ -98,6 +99,7 @@
 
     # Network CLI tools
     lftp
+    openssh # provides sftp/scp/ssh client (also pulled in by programs.ssh)
 
     # Terminal tools
     btop
@@ -138,12 +140,4 @@
   programs.eza.enable = true;    # modern ls replacement
   programs.tmux.enable = true;   # terminal multiplexer
 
-  # pi.dev coding agent is distributed via npm; install it (and keep it
-  # updated) into the user-local prefix so it survives rebuilds.
-  home.activation.installPi = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-    export NPM_CONFIG_PREFIX="$HOME/.local"
-    if ! command -v pi >/dev/null 2>&1; then
-      npm install -g --ignore-scripts @earendil-works/pi-coding-agent
-    fi
-  '';
 }
