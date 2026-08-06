@@ -79,7 +79,7 @@ The single most important rule in this repository:
 | **Ansible (root)** | Operations needing `sudo`; global files in `/etc/`; kernel/variable changes; hardware power engines; deployment of encrypted secret assets (SSH private keys, Git tokens) | `sudo apt install <package>` by hand |
 | **Nix + Home Manager (user)** | Everything inside your terminal/home bubble: software versions, user dotfiles (`.config/*`), window manager aesthetics, shortcuts | Editing `~/.config/*` or `~/.bashrc` directly |
 
-If you need something on the system, you add it to `ansible/playbook.yml`. If you need a user tool or config, you add it to `nix/modules/*.nix`. Then you push and re-apply — on this machine or any other.
+If you need something on the system, you add it to `ansible/playbook.yml`. If you need a user tool or config, you add it to `nix/common.nix` (all machines) or `nix/hosts/<hostname>.nix` (a single machine). Then you push and re-apply — on this machine or any other.
 
 ## Repository Layout
 
@@ -100,10 +100,14 @@ nix-ubuntu-infra/
 │       └── thinkpad-x1.yml  # Host-specific overrides (example: laptop)
 │
 └── nix/                       # User profile convergence layer
-    ├── home.nix               # Central Home Manager gateway
+    ├── home.nix               # Home Manager entry point (imports common + host module by hostname)
+    ├── common.nix             # COMMON config: username, shared packages, sway, shell, NAS symlinks
+    ├── hosts/                 # Host-specific Nix modules, selected automatically by hostname
+    │   ├── workstation.nix    # Desktop-specific packages/settings
+    │   └── thinkpad-x1.nix    # Laptop-specific packages/settings
     └── modules/
-        ├── sway.nix           # Wayland compositor, bar, launcher
-        └── shell.nix          # Bash aliases, SSH blocks, Git rules
+        ├── sway.nix           # Wayland compositor, bar, launcher (common)
+        └── shell.nix          # Bash aliases, SSH blocks, Git rules (common)
 ```
 
 ## Prerequisites
@@ -111,7 +115,7 @@ nix-ubuntu-infra/
 - **OS**: Ubuntu 26.04 LTS (Resolute Raccoon). A **minimal / server** install is recommended — the playbook installs every desktop component itself, so a full desktop image would only duplicate things. Network access is required during install.
 - **User account**: You need a user in the `sudo` group (created during Ubuntu install).
 - **Credentials**: A Git personal access token (PAT) for the private repository containing this tree, plus real values for the secrets in the vault (WiFi password, NAS/SMB credentials, Git token/email, an SSH private key).
-- **Hardware expectations**: The sample config includes NAS SMB/NFS automounts, but they currently ship **disabled** — the relevant tasks in `ansible/playbook.yml`, the paths in `host_vars/all/vars.yml`, and the `~/NAS-*` symlinks in `nix/home.nix` are commented out as a reminder. Re-enable them when your storage is available; the assumed layout is a NAS at `192.168.1.100` exporting an NFS share (`/volume1/nfs_data`) and an SMB share (`smb_data`).
+- **Hardware expectations**: The sample config includes NAS SMB/NFS automounts, but they currently ship **disabled** — the relevant tasks in `ansible/playbook.yml`, the paths in `host_vars/all/vars.yml`, and the `~/NAS-*` symlinks in `nix/common.nix` are commented out as a reminder. Re-enable them when your storage is available; the assumed layout is a NAS at `192.168.1.100` exporting an NFS share (`/volume1/nfs_data`) and an SMB share (`smb_data`).
 
 Everything else (`git`, `curl`, `ansible`) is installed by `setup.sh` on the fresh machine.
 
@@ -299,13 +303,15 @@ The file `ansible/host_vars/all/secrets.yml` holds secret values (WiFi password,
 
 ### Step 6 — Set your real username in Home Manager
 
-Open `nix/home.nix` and replace the placeholders:
+Open `nix/common.nix` and check the values:
 
 ```nix
-home.username = "your_username";          # -> your login name
-home.homeDirectory = "/home/your_username"; # -> matching absolute path
-home.stateVersion = "26.05";               # leave alone unless you know why you're changing it
+home.username = "jonas";              # your login name
+home.homeDirectory = "/home/jonas";   # matching absolute path
+home.stateVersion = "26.05";          # leave alone unless you know why you're changing it
 ```
+
+This file is imported by every machine; per-machine overrides live in `nix/hosts/<hostname>.nix`.
 
 Also set the Git identity and SSH `matchBlocks` host in `nix/modules/shell.nix` (username, email, and the NAS endpoint user/host) — these are wired into the Git and SSH config Home Manager generates.
 
@@ -352,7 +358,7 @@ sudo reboot
 - **Waybar** status bar at the top (started automatically)
 - **Mako** desktop notifications
 
-NAS SMB/NFS mounts are currently disabled; the `~/NAS-NFS` / `~/NAS-SMB` symlinks are commented out in `nix/home.nix` until the mounts are re-enabled (see the bootstrap section below).
+NAS SMB/NFS mounts are currently disabled; the `~/NAS-NFS` / `~/NAS-SMB` symlinks are commented out in `nix/common.nix` until the mounts are re-enabled (see the bootstrap section below).
 
 ---
 
@@ -428,7 +434,8 @@ All configuration is driven from this repository. The workflow is: **edit → co
 | Install system-wide drivers / daemons | `ansible/playbook.yml` — Section A |
 | Change NAS mounts / mount options | `ansible/playbook.yml` (mount units) + `ansible/host_vars/all/vars.yml` (paths) |
 | Change hardware flags for one machine | `ansible/host_vars/<hostname>.yml` |
-| Add a user CLI tool / editor | `nix/home.nix` (`home.packages`) |
+| Add a user CLI tool / editor (every machine) | `nix/common.nix` (`home.packages`) |
+| Add a user CLI tool / editor (one machine) | `nix/hosts/<hostname>.nix` (`home.packages`) |
 | Change Sway keybinds / workspaces | `nix/modules/sway.nix` |
 | Change shell aliases / Git / SSH | `nix/modules/shell.nix` |
 
@@ -451,7 +458,8 @@ All configuration is driven from this repository. The workflow is: **edit → co
 cd ~/src/nix-ubuntu-infra
 
 # User tools are pure Nix, no sudo:
-vim nix/home.nix        # add "fd" to home.packages
+vim nix/common.nix     # add "fd" to home.packages (all machines)
+vim nix/hosts/workstation.nix  # or here for this machine only
 infra-apply-user        # immediately available
 
 # System-level changes need sudo:
@@ -469,10 +477,11 @@ infra-save
 1. On the new machine: `git clone https://github.com/<you>/nix-ubuntu-infra.git`.
 2. Repeat [Step 3](#step-3--register-your-machine-in-the-inventory) — add an inventory entry named exactly after this machine's `hostname` in the appropriate group (`[workstations]` or `[laptops]`). Each machine self-selects via `-l "$(hostname)"`, so other machines' entries are never applied on it.
 3. Repeat [Step 4](#step-4--create-your-host-specific-configuration) — create `host_vars/<hostname>.yml` for the new machine.
-4. Add the machine's SSH keypair to the vault under its hostname (see the [SSH key lifecycle](#ssh-key-lifecycle-per-host-keys-in-the-vault)).
-5. Ensure the vault password is available on the new machine — either place `~/.ansible/vault_pass` (mode `0600`) or rely on the `--ask-vault-pass` prompt. The encrypted secrets themselves come with the clone; nothing needs to be recreated.
-6. Commit and push the inventory/host-var/vault changes from any machine.
-7. On the new machine: `./setup.sh`, then reboot.
+4. Create the matching Nix host module `nix/hosts/<hostname>.nix` for per-machine user packages/settings (it can start as an empty `{}` module). `home-manager switch` auto-selects it from the machine's hostname; if it's missing, the build aborts with a message telling you to create it.
+5. Add the machine's SSH keypair to the vault under its hostname (see the [SSH key lifecycle](#ssh-key-lifecycle-per-host-keys-in-the-vault)).
+6. Ensure the vault password is available on the new machine — either place `~/.ansible/vault_pass` (mode `0600`) or rely on the `--ask-vault-pass` prompt. The encrypted secrets themselves come with the clone; nothing needs to be recreated.
+7. Commit and push the inventory/host-var/vault changes from any machine.
+8. On the new machine: `./setup.sh`, then reboot.
 
 From then on, `infra-sync-all` on either machine pulls the latest tree and converges only the local machine.
 
@@ -493,6 +502,8 @@ Ansible merges `host_vars/all/vars.yml` into every host, then overlays `host_var
 - Put things that differ per machine in `host_vars/<hostname>.yml` (laptop vs desktop flags, extra packages).
 
 The secrets vault (`host_vars/all/secrets.yml`) is common by design — WiFi, NAS and Git credentials are assumed identical across your fleet. If you need per-machine secrets, create `host_vars/<hostname>.yml` mirroring the same variables with a different encryption.
+
+The same split exists on the Nix side. `nix/home.nix` is the Home Manager entry point; it imports `nix/common.nix` (applies to every machine) plus the host module matching this machine's hostname (`nix/hosts/<hostname>.nix`), selected automatically from `/etc/hostname` — no manual wiring. Put shared user packages and settings in `nix/common.nix`; per-machine user packages and settings in `nix/hosts/<hostname>.nix`. If a machine has no host module, `home-manager switch` fails with a message naming the file to create.
 
 ---
 
@@ -545,6 +556,9 @@ Notes:
 ---
 
 ## Troubleshooting & FAQ
+
+**`home-manager switch` aborts: "No Home Manager host module found"**
+`nix/home.nix` imports `nix/hosts/<hostname>.nix` matching this machine's `hostname`. If that file doesn't exist, create it (copy an existing host file or start with an empty `{}` module) — see Step 6 / the "Adding a Second Machine" section.
 
 **`ERROR! provided hosts list is empty`**
 The run limited to `-l "$(hostname)"` matched nothing: there is no inventory entry named exactly like this machine's `hostname` (or it is commented out). Add your hostname entry to the appropriate group in `inventory.ini` (see Step 3). `setup.sh` checks this up front and reports it before Ansible runs.
@@ -600,5 +614,5 @@ Ansible is idempotent — it converges *towards* the declared state but won't un
 - **Sway workspace rules** — pin apps to workspaces and add keybinds in `nix/modules/sway.nix` (`config.keybindings`, `config.output`).
 - **Waybar modules** — system tray, network, battery (laptop), clock in `programs.waybar` settings inside `nix/modules/sway.nix`.
 - **Backups** — a `restic`/`borg` Home Manager service or a cron-based Ansible task for `/home` → your NAS.
-- **More Nix modules** — split `sway.nix`/`shell.nix` further (e.g., `editors.nix`, `dev.nix`) and import them in `home.nix`.
+- **More Nix modules** — split `sway.nix`/`shell.nix` further (e.g., `editors.nix`, `dev.nix`) and import them in `common.nix`.
 - **Per-machine secrets** — per-host vault files for hosts with different WiFi/credentials.
