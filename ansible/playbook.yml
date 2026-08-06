@@ -213,7 +213,7 @@
             vpn_type: openconnect
             vpn_data:
               gateway: "{{ vault_anyconnect_gateway }}"
-              user_agent: "{{ vault_anyconnect_user_agent }}"
+              useragent: "{{ vault_anyconnect_user_agent }}"
             state: present
 
         - name: Install Tailscale mesh client

@@ -35,10 +35,11 @@
         # Clipboard history picker (cliphist + wofi).
         "Mod4+v" = "exec cliphist list | wofi --dmenu | cliphist decode | wl-copy";
 
-        # Volume via PipeWire (pactl talks to pipewire-pulse).
-        "XF86AudioRaiseVolume" = "exec pactl set-sink-volume @DEFAULT_SINK@ +5%";
-        "XF86AudioLowerVolume" = "exec pactl set-sink-volume @DEFAULT_SINK@ -5%";
-        "XF86AudioMute" = "exec pactl set-sink-mute @DEFAULT_SINK@ toggle";
+        # Volume via PipeWire (wpctl ships with wireplumber, installed
+        # system-wide by the Ansible playbook).
+        "XF86AudioRaiseVolume" = "exec wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%+";
+        "XF86AudioLowerVolume" = "exec wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-";
+        "XF86AudioMute" = "exec wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle";
 
         # Media playback controls.
         "XF86AudioPlay" = "exec playerctl play-pause";

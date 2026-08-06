@@ -15,7 +15,6 @@
     wl-clipboard
     pavucontrol
     playerctl
-    pulseaudio
     brightnessctl
     blueman
     seahorse
