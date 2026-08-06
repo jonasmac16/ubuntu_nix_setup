@@ -1,0 +1,5 @@
+{% for host, attrs in vault_ssh_hosts | default({}) | dictsort %}
+Host {{ host }}
+    HostName {{ attrs.hostname }}
+    User {{ attrs.user }}
+{% endfor %}

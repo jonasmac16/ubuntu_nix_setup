@@ -3,13 +3,15 @@
 {
   programs.ssh = {
     enable = true;
-    settings = {
-      "nas-endpoint" = {
-        hostname = "192.168.1.100";
-        user = "storage_admin";
-        identityFile = "~/.ssh/id_ed25519";
-      };
+    enableDefaultConfig = false; # defaults declared explicitly below
+    settings."*" = {
+      HashKnownHosts = true;
+      ForwardX11 = false;
+      ServerAliveInterval = 60;
     };
+    # Host definitions (hostnames/IPs/users) are secrets: they live in the
+    # Ansible vault and are deployed by the playbook to ~/.ssh/config.d/.
+    extraConfig = "Include ~/.ssh/config.d/*\n";
   };
 
   programs.git = {

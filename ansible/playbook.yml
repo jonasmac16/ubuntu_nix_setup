@@ -324,6 +324,18 @@
             mode: '0644'
           when: host_ssh_public_key | length > 0
 
+        - name: Ensure SSH config drop-in directory exists
+          ansible.builtin.file:
+            path: "{{ ansible_env.HOME }}/.ssh/config.d"
+            state: directory
+            mode: '0700'
+
+        - name: Deploy SSH host definitions from Vault
+          ansible.builtin.template:
+            src: ssh_config_hosts.j2
+            dest: "{{ ansible_env.HOME }}/.ssh/config.d/10-vault-hosts"
+            mode: '0600'
+
         - name: Construct user profile binary path anchors
           ansible.builtin.file:
             path: "{{ ansible_env.HOME }}/.local/bin"

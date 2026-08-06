@@ -288,6 +288,14 @@ The file `ansible/host_vars/all/secrets.yml` holds secret values (Home/Work WiFi
    vault_host_ssh_public_keys:
      workstation-orcrb: "ssh-ed25519 AAAA... workstation@workstation-orcrb"
      laptop-xps: "ssh-ed25519 AAAA... laptop@laptop-xps"
+
+   vault_ssh_hosts:               # SSH config host definitions (Host/HostName/User)
+     nas:
+       hostname: "192.168.1.100"
+       user: "storage_admin"
+     workstation-orcrb:
+       hostname: "192.168.1.50"
+       user: "jonas"
    ```
 
 3. Verify the file on disk is still encrypted (content starts with `$ANSIBLE_VAULT;...`):
@@ -419,6 +427,7 @@ The playbook (`ansible/playbook.yml`) runs in two blocks.
 | SSH directory | Ensures `~/.ssh` exists (mode `0700`) |
 | SSH private key | Writes `~/.ssh/id_ed25519` (mode `0600`) — the per-host key from `vault_host_ssh_private_keys`, or the shared fallback if no per-host entry exists |
 | SSH public key | Writes `~/.ssh/id_ed25519.pub` (mode `0644`) from `vault_host_ssh_public_keys` when the host has one |
+| SSH host definitions | Writes `~/.ssh/config.d/10-vault-hosts` (mode `0600`) from `vault_ssh_hosts` — hostnames/IPs/users stay in the vault, picked up by home-manager's `Include ~/.ssh/config.d/*` |
 | Bin directory | Ensures `~/.local/bin` exists |
 
 ### Phase 3 — Install Nix
@@ -573,7 +582,7 @@ System-level equivalents live in the Ansible playbook:
   ansible-vault rekey   <file>        # change the vault password
   ```
 
-- The playbook deploys secrets with restrictive modes: `~/.ssh` (0700), `~/.ssh/id_ed25519` (0600), `~/.ssh/id_ed25519.pub` (0644), `/etc/samba/.smbcredentials` (0600, root-owned).
+- The playbook deploys secrets with restrictive modes: `~/.ssh` (0700), `~/.ssh/id_ed25519` (0600), `~/.ssh/id_ed25519.pub` (0644), `~/.ssh/config.d/10-vault-hosts` (0600), `/etc/samba/.smbcredentials` (0600, root-owned).
 - Git authentication is **SSH-only** — there is no token/`~/.git-credentials` in this setup. Make sure each host's public key (`~/.ssh/id_ed25519.pub`, deployed from the vault) is registered on GitHub/GitLab.
 - **Do not** commit decrypted vault files, plaintext `.env`-style secrets, or your real SSH private key anywhere else. SSH keys are deployed from the vault per host — the matching key is written to `~/.ssh/id_ed25519` on each machine automatically.
 - Back up your vault password in a password manager. Losing it means you cannot decrypt the secrets file.
