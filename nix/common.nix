@@ -4,6 +4,14 @@
   imports = [
     ./modules/sway.nix
     ./modules/shell.nix
+    ./modules/browsers.nix
+    ./modules/development.nix
+    ./modules/office.nix
+    ./modules/media.nix
+    ./modules/science.nix
+    ./modules/files.nix
+    ./modules/security.nix
+    ./modules/system.nix
   ];
 
   home.username = "jonas";

@@ -160,6 +160,104 @@
             state: started
           when: is_laptop | bool
 
+        # ====================================================
+        # REMOTE SERVICES (SSH, CORPORATE VPN, MESH NETWORK, STORAGE CLIENTS)
+        # ====================================================
+        - name: Install secure remote shell server
+          ansible.builtin.apt:
+            name: openssh-server
+            update_cache: true
+            state: present
+
+        - name: Enable SSH daemon
+          ansible.builtin.systemd:
+            name: sshd
+            enabled: true
+            state: started
+
+        - name: Install corporate VPN client (NetworkManager openconnect)
+          ansible.builtin.apt:
+            name:
+              - network-manager-openconnect
+              - network-manager-openconnect-gnome
+            state: present
+
+        - name: Define central AnyConnect VPN profile
+          community.general.nmcli:
+            conn_name: "AnyConnect"
+            type: vpn
+            vpn_type: openconnect
+            vpn_data:
+              gateway: "{{ anyconnect_gateway }}"
+              user: "{{ vault_anyconnect_user }}"
+            state: present
+
+        - name: Install Tailscale mesh client
+          ansible.builtin.shell: "curl -fsSL https://tailscale.com/install.sh | sh"
+          args:
+            creates: /usr/bin/tailscale
+
+        - name: Enable tailscaled mesh service
+          ansible.builtin.systemd:
+            name: tailscaled
+            enabled: true
+            state: started
+
+        - name: Query Tailscale connection status
+          ansible.builtin.command: tailscale status
+          register: tailscale_status
+          changed_when: false
+          ignore_errors: true
+
+        - name: Join existing Tailscale tailnet
+          ansible.builtin.shell: |
+            tailscale up --authkey="{{ vault_tailscale_authkey }}" --hostname="{{ inventory_hostname }}"
+          when: tailscale_status.rc != 0
+
+        - name: Provision network share client utilities
+          ansible.builtin.apt:
+            name:
+              - cifs-utils
+              - nfs-common
+            state: present
+
+        # ====================================================
+        # ENDPOINT PROTECTION (EDR) — guarded on vendor/ files
+        # ====================================================
+        # Drop the Tanium .deb + tanium-init.dat and Sophos SophosSetup.sh into
+        # vendor/ (gitignored) to opt a host in. Tasks are skipped when the
+        # files are absent, so the repo stays portable.
+        - name: Inspect Tanium client bundle
+          ansible.builtin.stat:
+            path: "{{ playbook_dir }}/vendor/tanium-init.dat"
+          register: tanium_initfile
+
+        - name: Stage Tanium client package from vendor
+          ansible.builtin.apt:
+            deb: "{{ item }}"
+            state: present
+          loop: "{{ lookup('fileglob', playbook_dir + '/vendor/taniumclient_*.deb') }}"
+          when: tanium_initfile.stat.exists
+
+        - name: Deploy Tanium client instance mask
+          ansible.builtin.copy:
+            src: "{{ playbook_dir }}/vendor/tanium-init.dat"
+            dest: "/opt/Tanium/TaniumClient/tanium-init.dat"
+            mode: '0644'
+          when: tanium_initfile.stat.exists
+
+        - name: Inspect Sophos installer bundle
+          ansible.builtin.stat:
+            path: "{{ playbook_dir }}/vendor/SophosSetup.sh"
+          register: sophos_installer
+
+        - name: Install Sophos Protection for Linux (interactive)
+          ansible.builtin.shell: "sh {{ playbook_dir }}/vendor/SophosSetup.sh"
+          args:
+            chdir: "{{ playbook_dir }}/vendor"
+          when: sophos_installer.stat.exists
+          changed_when: false
+
     # ====================================================
     # SECTION B: USER SPACE APPLICATION CONFIGURATION (become: false)
     # ====================================================

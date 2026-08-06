@@ -6,6 +6,10 @@
 result
 .nix-profile
 
+# Proprietary EDR installers (Tanium/Sophos). Drop files here locally to opt
+# a host in; they are never committed (may contain secrets).
+vendor/
+
 # NOTE: ansible/host_vars/all/secrets.yml is intentionally NOT ignored.
 # The Ansible Vault encrypted secrets file is committed to the repository for
 # central management. A pre-commit hook (scripts/pre-commit, installed via

@@ -96,25 +96,34 @@ nix-ubuntu-infra/
 │       ├── all/               # COMMON configuration — applies to every machine
 │       │   ├── vars.yml       # Non-sensitive values + machine-agnostic defaults
 │       │   └── secrets.yml    # ANSIBLE-VAULT ENCRYPTED secrets (committed, never plaintext)
-│       ├── workstation.yml  # Host-specific overrides (example: desktop, named after hostname)
-│       └── thinkpad-x1.yml  # Host-specific overrides (example: laptop)
+│       ├── workstation-orcrb.yml    # Host-specific overrides (desktop)
+│       └── laptop-xps.yml           # Host-specific overrides (laptop)
 │
 └── nix/                       # User profile convergence layer
     ├── home.nix               # Home Manager entry point (imports common + host module by hostname)
-    ├── common.nix             # COMMON config: username, shared packages, sway, shell, NAS symlinks
+    ├── common.nix             # COMMON config: username, shared package groups, sway, shell, NAS symlinks
     ├── hosts/                 # Host-specific Nix modules, selected automatically by hostname
-    │   ├── workstation.nix    # Desktop-specific packages/settings
-    │   └── thinkpad-x1.nix    # Laptop-specific packages/settings
-    └── modules/
+    │   ├── workstation-orcrb.nix  # Desktop-specific packages/settings
+    │   └── laptop-xps.nix         # Laptop-specific packages/settings
+    └── modules/               # Grouped Nix modules (see "Software profile by module")
         ├── sway.nix           # Wayland compositor, bar, launcher (common)
-        └── shell.nix          # Bash aliases, SSH blocks, Git rules (common)
+        ├── shell.nix          # Bash aliases, SSH blocks, Git rules (common)
+        ├── browsers.nix       # Firefox (add-ons, CSS, settings) + Chromium (extensions, PWAs)
+        ├── development.nix    # VSCode, Alacritty, opencode, pi.dev, containers, lftp
+        ├── office.nix         # LibreOffice + dicts, Zotero (+ LO add-in), Obsidian, yEd
+        ├── media.nix          # mpv, VLC
+        ├── science.nix        # Fiji, QuPath
+        ├── files.nix          # Thunar + plugins, sshfs
+        ├── security.nix       # Proton Pass, Bitwarden desktop apps
+        └── system.nix         # wdisplays, solaar
 ```
 
 ## Prerequisites
 
 - **OS**: Ubuntu 26.04 LTS (Resolute Raccoon). A **minimal / server** install is recommended — the playbook installs every desktop component itself, so a full desktop image would only duplicate things. Network access is required during install.
 - **User account**: You need a user in the `sudo` group (created during Ubuntu install).
-- **Credentials**: A Git personal access token (PAT) for the private repository containing this tree, plus real values for the secrets in the vault (WiFi password, NAS/SMB credentials, Git token/email, an SSH private key).
+- **Credentials**: A Git personal access token (PAT) for the private repository containing this tree, plus real values for the secrets in the vault (WiFi password, NAS/SMB credentials, Git token/email, an SSH private key, the Tailscale auth key, and the AnyConnect VPN username).
+- **EDR installers (optional)**: Tanium (`taniumclient_*.deb` + `tanium-init.dat`) and Sophos (`SophosSetup.sh`) are proprietary and ship from your organisation. Drop them into the gitignored `vendor/` directory to opt a host in; the playbook installs them when present and skips them otherwise.
 - **Hardware expectations**: The sample config includes NAS SMB/NFS automounts, but they currently ship **disabled** — the relevant tasks in `ansible/playbook.yml`, the paths in `host_vars/all/vars.yml`, and the `~/NAS-*` symlinks in `nix/common.nix` are commented out as a reminder. Re-enable them when your storage is available; the assumed layout is a NAS at `192.168.1.100` exporting an NFS share (`/volume1/nfs_data`) and an SMB share (`smb_data`).
 
 Everything else (`git`, `curl`, `ansible`) is installed by `setup.sh` on the fresh machine.
@@ -134,7 +143,7 @@ Everything else (`git`, `curl`, `ansible`) is installed by `setup.sh` on the fre
    hostname
    ```
 
-   Example output: `thinkpad-x1` or `ryzen-desktop`.
+   Example output: `workstation-orcrb` or `laptop-xps`.
 
 ### Step 2 — Initialize the Git repository
 
@@ -157,14 +166,14 @@ If you already have this repository hosted, skip straight to cloning it on the t
 
 ### Step 3 — Register your machine in the inventory
 
-Open `ansible/inventory.ini`. It ships with two **example** hosts:
+Open `ansible/inventory.ini`. It ships with the two real hosts:
 
 ```ini
 [workstations]
-workstation ansible_host=localhost ansible_connection=local
+workstation-orcrb ansible_host=localhost ansible_connection=local
 
 [laptops]
-thinkpad-x1 ansible_host=localhost ansible_connection=local
+laptop-xps ansible_host=localhost ansible_connection=local
 
 [ubuntu:children]
 workstations
@@ -173,34 +182,35 @@ laptops
 
 **How targeting works:** every host is `ansible_connection=local`, so the playbook **never connects over the network** — each entry simply means "apply this machine's config on this physical box". The playbook, `setup.sh`, and the `infra-apply-system` alias all limit the run to the **current machine** with `-l "$(hostname)"`. That only matches an inventory entry if the entry name equals the machine's `hostname` output.
 
-1. Confirm your machine's hostname: `hostname` (e.g. `workstation`).
-2. Make sure there is an inventory entry with **exactly that name**. The shipped `workstation` entry matches this machine; rename the entries (and matching files in `host_vars/`) for your real machines:
+1. Confirm your machine's hostname: `hostname` (e.g. `workstation-orcrb`).
+2. Make sure there is an inventory entry with **exactly that name**. The shipped entries match this repo's two machines; if your machine's `hostname` differs, rename the entry (and the matching files in `host_vars/` and `nix/hosts/`):
 
 ```ini
 [workstations]
-ryzen-desktop ansible_host=localhost ansible_connection=local
+workstation-orcrb ansible_host=localhost ansible_connection=local
 
 [laptops]
-thinkpad-x1 ansible_host=localhost ansible_connection=local
+laptop-xps ansible_host=localhost ansible_connection=local
 
 [ubuntu:children]
 workstations
 laptops
 ```
 
-3. Keep one entry per physical machine. A machine only ever applies its own entry — running `-l "$(hostname)"` on `ryzen-desktop` never configures `thinkpad-x1`, and vice versa.
+3. Keep one entry per physical machine. A machine only ever applies its own entry — running `-l "$(hostname)"` on `workstation-orcrb` never configures `laptop-xps`, and vice versa.
 
 > If a host's `hostname` is not in the inventory, `setup.sh` aborts with a clear message listing the fix; Ansible would otherwise report `hosts list is empty`.
 
 ### Step 4 — Create your host-specific configuration
 
-The example files are already named after real hostnames. If a machine's hostname differs, copy the closest example to that name (or rename it in place):
+The example files are already named after the real hostnames. If a machine's hostname differs, copy the closest file to that name (or rename it in place), and create the matching `nix/hosts/<hostname>.nix` module:
 
 ```bash
-# A desktop whose hostname is `ryzen-desktop`:
-cp ansible/host_vars/workstation.yml ansible/host_vars/ryzen-desktop.yml
+# A desktop whose hostname is `workstation-orcrb`: already present — edit it directly.
+cp ansible/host_vars/workstation-orcrb.yml ansible/host_vars/ryzen-desktop.yml
+cp nix/hosts/workstation-orcrb.nix nix/hosts/ryzen-desktop.nix
 
-# A laptop whose hostname is `thinkpad-x1`: the example already matches — edit it directly.
+# A laptop whose hostname is `laptop-xps`: already present — edit it directly.
 ```
 
 Each file only needs to contain the **overrides** relative to the common configuration:
@@ -222,7 +232,7 @@ The fields:
 | `install_nvidia` | Installs `nvidia-driver-595` | `false` |
 | `additional_packages` | Extra APT packages for this machine | `[]` |
 
-You can delete example files you don't use (e.g. `thinkpad-x1.yml` if you have no laptop) once your real per-host files exist, or keep them as templates.
+You can delete host files you don't use once your real per-host files exist, or keep them as templates.
 
 ### Step 5 — Create and encrypt the secrets vault
 
@@ -252,24 +262,27 @@ The file `ansible/host_vars/all/secrets.yml` holds secret values (WiFi password,
    vault_git_token: "github_pat_..._alphanumeric"
    vault_git_email: "you@example.com"
 
+   vault_tailscale_authkey: "tskey-auth-..."   # one-off Tailscale tailnet auth key
+   vault_anyconnect_user: "corp_username"      # Cisco AnyConnect VPN username
+
    vault_ssh_private_key: |        # optional shared fallback (legacy)
      -----BEGIN OPENSSH PRIVATE KEY-----
      <your actual ed25519 or RSA private key data>
      -----END OPENSSH PRIVATE KEY-----
 
    vault_host_ssh_private_keys:    # one entry per machine, keyed by inventory hostname
-     workstation: |
+     workstation-orcrb: |
        -----BEGIN OPENSSH PRIVATE KEY-----
-       <workstation private key data>
+       <workstation-orcrb private key data>
        -----END OPENSSH PRIVATE KEY-----
-     thinkpad-x1: |
+     laptop-xps: |
        -----BEGIN OPENSSH PRIVATE KEY-----
-       <thinkpad-x1 private key data>
+       <laptop-xps private key data>
        -----END OPENSSH PRIVATE KEY-----
 
    vault_host_ssh_public_keys:
-     workstation: "ssh-ed25519 AAAA... workstation@workstation"
-     thinkpad-x1: "ssh-ed25519 AAAA... laptop@thinkpad-x1"
+     workstation-orcrb: "ssh-ed25519 AAAA... workstation@workstation-orcrb"
+     laptop-xps: "ssh-ed25519 AAAA... laptop@laptop-xps"
    ```
 
 3. Verify the file on disk is still encrypted (content starts with `$ANSIBLE_VAULT;...`):
@@ -410,7 +423,7 @@ If `/nix` does not exist, installs the **standalone Nix package manager** in dae
 
 ### Phase 5 — Home Manager channels
 
-Adds the `nixpkgs-unstable` and `home-manager` (master branch) channels, then runs `nix-channel --update`. This setup tracks the unstable channels rather than release channels, so `home.stateVersion` stays pinned to the current stable release for compatibility.
+Adds the `nixpkgs-unstable`, `home-manager` (master branch), and `nur` (Nix User Repositories, used to declare Firefox add-ons such as Proton Pass and Tridactyl) channels, then runs `nix-channel --update`. This setup tracks the unstable channels rather than release channels, so `home.stateVersion` stays pinned to the current stable release for compatibility.
 
 ### Phase 6 — Link the configuration
 
@@ -432,10 +445,16 @@ All configuration is driven from this repository. The workflow is: **edit → co
 |--------------|------|
 | Install a system package (APT) | `ansible/playbook.yml` — Section A |
 | Install system-wide drivers / daemons | `ansible/playbook.yml` — Section A |
+| Configure SSH server / Tailscale / AnyConnect VPN | `ansible/playbook.yml` — Section A (remote services) |
+| Install Tanium / Sophos EDR | Drop files into `vendor/` (gitignored) |
 | Change NAS mounts / mount options | `ansible/playbook.yml` (mount units) + `ansible/host_vars/all/vars.yml` (paths) |
 | Change hardware flags for one machine | `ansible/host_vars/<hostname>.yml` |
 | Add a user CLI tool / editor (every machine) | `nix/common.nix` (`home.packages`) |
 | Add a user CLI tool / editor (one machine) | `nix/hosts/<hostname>.nix` (`home.packages`) |
+| Change Firefox add-ons / CSS / Chromium PWAs | `nix/modules/browsers.nix` |
+| Change VSCode extensions / settings | `nix/modules/development.nix` |
+| Change LibreOffice / Zotero / Obsidian | `nix/modules/office.nix` |
+| Change file manager / network share mounts | `nix/modules/files.nix` |
 | Change Sway keybinds / workspaces | `nix/modules/sway.nix` |
 | Change shell aliases / Git / SSH | `nix/modules/shell.nix` |
 
@@ -458,8 +477,8 @@ All configuration is driven from this repository. The workflow is: **edit → co
 cd ~/src/nix-ubuntu-infra
 
 # User tools are pure Nix, no sudo:
-vim nix/common.nix     # add "fd" to home.packages (all machines)
-vim nix/hosts/workstation.nix  # or here for this machine only
+vim nix/common.nix            # add "fd" to home.packages (all machines)
+vim nix/hosts/workstation-orcrb.nix  # or here for this machine only
 infra-apply-user        # immediately available
 
 # System-level changes need sudo:
@@ -504,6 +523,33 @@ Ansible merges `host_vars/all/vars.yml` into every host, then overlays `host_var
 The secrets vault (`host_vars/all/secrets.yml`) is common by design — WiFi, NAS and Git credentials are assumed identical across your fleet. If you need per-machine secrets, create `host_vars/<hostname>.yml` mirroring the same variables with a different encryption.
 
 The same split exists on the Nix side. `nix/home.nix` is the Home Manager entry point; it imports `nix/common.nix` (applies to every machine) plus the host module matching this machine's hostname (`nix/hosts/<hostname>.nix`), selected automatically from `/etc/hostname` — no manual wiring. Put shared user packages and settings in `nix/common.nix`; per-machine user packages and settings in `nix/hosts/<hostname>.nix`. If a machine has no host module, `home-manager switch` fails with a message naming the file to create.
+
+---
+
+## Software profile by module
+
+User-level software is grouped into functional modules under `nix/modules/`. `common.nix` imports every module, so **all machines get the full profile** — and because each module is self-contained, a host that shouldn't have a group can simply drop that import from its config.
+
+| Module | Software |
+|--------|----------|
+| `browsers.nix` | Firefox (add-ons: Proton Pass, Bitwarden, Dark Reader, Consent-O-Matic, Privacy Badger, Tridactyl, Sidebery, Zotero Connector; custom `userChrome`/`userContent` CSS; auto-enabled) and Chromium (extensions: Proton Pass, Bitwarden, Vimium, uBlock Origin, Dark Reader; PWAs for **MS Teams**, **Outlook 365**, **ChatGPT**) |
+| `development.nix` | VSCode (Python/Pylance, Jupyter, Julia, Rainbow CSV, Remote-SSH, Docker, Nix IDE, Prettier, ErrorLens, GitLens, Material Icon Theme), Alacritty, opencode, pi.dev (via npm), quickemu, distrobox, podman, apptainer, lftp |
+| `office.nix` | LibreOffice (+ en_GB/en_US dictionaries), Zotero (+ JRE and auto-installed LibreOffice add-in), Obsidian, yEd |
+| `media.nix` | mpv, VLC |
+| `science.nix` | Fiji, QuPath |
+| `files.nix` | Thunar (+ volume/archive/media-tag plugins, thumbnails), gvfs, sshfs |
+| `security.nix` | Proton Pass, Bitwarden Desktop (standalone apps) |
+| `system.nix` | wdisplays (Wayland display-settings GUI), solaar (Logitech) |
+
+System-level equivalents live in the Ansible playbook:
+
+| Function | Where |
+|----------|-------|
+| SSH server (`openssh-server` + daemon) | `ansible/playbook.yml` — remote services |
+| Tailscale (install, service, `tailscale up`) | `ansible/playbook.yml` — remote services (authkey from vault) |
+| Corporate VPN (NetworkManager openconnect + central `AnyConnect` profile) | `ansible/playbook.yml` — remote services (gateway in vars, user in vault) |
+| SMB/NFS client tools (`cifs-utils`, `nfs-common`) | `ansible/playbook.yml` — remote services |
+| Tanium / Sophos EDR | `ansible/playbook.yml` — endpoint protection (guarded on `vendor/`) |
 
 ---
 
@@ -582,7 +628,7 @@ Check `systemctl status greetd` and the log at `/var/log/greetd/`. The default c
 You must log into a fresh shell (or source `/etc/profile.d/nix.sh`) after installing Nix. If the setup script ran without a reboot, run `. /etc/profile.d/nix.sh` first.
 
 **`nix-shell '<home-manager>' -A install` fails on new Nix**
-Older installs used the `nixos` channel; standalone installs need `nixpkgs` as well. Ensure `nix-channel --list` shows `nixpkgs` (pointing at `nixpkgs-unstable`) and `home-manager` (pointing at the master branch tarball), then `nix-channel --update`. If the error mentions an unstable module API, your Nix/Home Manager are version-mismatched — upgrade Home Manager (`home-manager upgrade`) before retrying.
+Older installs used the `nixos` channel; standalone installs need `nixpkgs` as well. Ensure `nix-channel --list` shows `nixpkgs` (pointing at `nixpkgs-unstable`), `home-manager` (pointing at the master branch tarball), and `nur`, then `nix-channel --update`. If the error mentions an unstable module API, your Nix/Home Manager are version-mismatched — upgrade Home Manager (`home-manager upgrade`) before retrying.
 
 **Discord `.deb` download or install fails**
 Transient download failures or new architecture packages. Re-run `infra-apply-system`. To skip Discord entirely, comment out the two Discord tasks in `ansible/playbook.yml` (Section B).

@@ -1,0 +1,109 @@
+{ config, pkgs, lib, ... }:
+
+{
+  # ------------------------------------------------ VSCode
+  programs.vscode = {
+    enable = true;
+
+    extensions = with pkgs.vscode-extensions; [
+      ms-python.python
+      ms-toolsai.jupyter
+      julialang.language-julia
+      mechatroner.rainbow-csv
+      ms-vscode-remote.remote-ssh
+      ms-azuretools.vscode-docker
+      jnoortheen.nix-ide
+      esbenp.prettier-vscode
+      usernamehw.errorlens
+      eamodio.gitlens
+      pkief.material-icon-theme
+    ];
+
+    # Apptainer has no dedicated VSCode extension in nixpkgs; containers are
+    # handled by the Docker extension + the apptainer CLI below.
+
+    userSettings = {
+      # Editor defaults
+      "editor.formatOnSave" = true;
+      "editor.defaultFormatter" = "esbenp.prettier-vscode";
+      "editor.minimap.enabled" = true;
+      "files.autoSave" = "afterDelay";
+      "workbench.iconTheme" = "material-icon-theme";
+
+      # Prettier
+      "prettier.singleQuote" = true;
+      "prettier.trailingComma" = "all";
+
+      # ErrorLens
+      "errorLens.enabled" = true;
+      "errorLens.addInProblemOverview" = true;
+
+      # GitLens
+      "gitlens.defaultDateFormat" = "relative";
+
+      # Python
+      "python.analysis.typeCheckingMode" = "basic";
+
+      # Julia
+      "julia.enableTelemetry" = false;
+
+      # Nix
+      "nix.enableLanguageServer" = true;
+    };
+  };
+
+  # ------------------------------------------------ Terminal & tools
+  programs.alacritty = {
+    enable = true;
+    settings = {
+      font = {
+        size = 11.0;
+        normal = {
+          family = "JetBrains Mono";
+          style = "Regular";
+        };
+      };
+      window = {
+        opacity = 0.95;
+        decorations = "full";
+      };
+      colors = {
+        primary = {
+          background = "#1e1e2e";
+          foreground = "#cdd6f4";
+        };
+      };
+      key_bindings = [
+        {
+          key = "F11";
+          action = "ToggleFullscreen";
+        }
+      ];
+    };
+  };
+
+  # ------------------------------------------------ Coding agents
+  home.packages = with pkgs; [
+    # AI coding agents
+    opencode
+    nodejs_22
+
+    # Containers / VMs
+    quickemu
+    distrobox
+    podman
+    apptainer
+
+    # Network CLI tools
+    lftp
+  ];
+
+  # pi.dev coding agent is distributed via npm; install it (and keep it
+  # updated) into the user-local prefix so it survives rebuilds.
+  home.activation.installPi = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+    export NPM_CONFIG_PREFIX="$HOME/.local"
+    if ! command -v pi >/dev/null 2>&1; then
+      npm install -g --ignore-scripts @earendil-works/pi-coding-agent
+    fi
+  '';
+}
