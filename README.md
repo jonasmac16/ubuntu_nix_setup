@@ -76,7 +76,7 @@ The single most important rule in this repository:
 
 | Layer | Owns | You must NOT do |
 |-------|------|-----------------|
-| **Ansible (root)** | Operations needing `sudo`; global files in `/etc/`; kernel/variable changes; hardware power engines; deployment of encrypted secret assets (SSH private keys, Git tokens) | `sudo apt install <package>` by hand |
+| **Ansible (root)** | Operations needing `sudo`; global files in `/etc/`; kernel/variable changes; hardware power engines; deployment of encrypted secret assets (SSH private keys, WiFi credentials) | `sudo apt install <package>` by hand |
 | **Nix + Home Manager (user)** | Everything inside your terminal/home bubble: software versions, user dotfiles (`.config/*`), window manager aesthetics, shortcuts | Editing `~/.config/*` or `~/.bashrc` directly |
 
 If you need something on the system, you add it to `ansible/playbook.yml`. If you need a user tool or config, you add it to `nix/common.nix` (all machines) or `nix/hosts/<hostname>.nix` (a single machine). Then you push and re-apply — on this machine or any other.
@@ -125,7 +125,7 @@ nix-ubuntu-infra/
 
 - **OS**: Ubuntu 26.04 LTS (Resolute Raccoon). A **minimal / server** install is recommended — the playbook installs every desktop component itself, so a full desktop image would only duplicate things. Network access is required during install.
 - **User account**: You need a user in the `sudo` group (created during Ubuntu install).
-- **Credentials**: A Git personal access token (PAT) for the private repository containing this tree, plus real values for the secrets in the vault (WiFi password, NAS/SMB credentials, Git token/email, an SSH private key, the Tailscale auth key, and the AnyConnect VPN username).
+- **Credentials**: Real values for the secrets in the vault (Home/Work WiFi SSID + passwords, NAS/SMB credentials, an SSH private key per host, the Tailscale auth key, and the AnyConnect VPN gateway/user-agent). Git authentication is **SSH-only** — register each host's deployed public key (`~/.ssh/id_ed25519.pub`) on GitHub (and GitLab, if used) once.
 - **EDR installers (optional)**: Tanium (`taniumclient_*.deb` + `tanium-init.dat`) and Sophos (`SophosSetup.sh`) are proprietary and ship from your organisation. Drop them into the gitignored `vendor/` directory to opt a host in; the playbook installs them when present and skips them otherwise.
 - **Hardware expectations**: The sample config includes NAS SMB/NFS automounts, but they currently ship **disabled** — the relevant tasks in `ansible/playbook.yml`, the paths in `host_vars/all/vars.yml`, and the `~/NAS-*` symlinks in `nix/common.nix` are commented out as a reminder. Re-enable them when your storage is available; the assumed layout is a NAS at `192.168.1.100` exporting an NFS share (`/volume1/nfs_data`) and an SMB share (`smb_data`).
 
@@ -239,7 +239,7 @@ You can delete host files you don't use once your real per-host files exist, or 
 
 ### Step 5 — Create and encrypt the secrets vault
 
-The file `ansible/host_vars/all/secrets.yml` holds secret values (WiFi password, NAS/SMB credentials, Git token, per-host SSH keypairs) and is **always committed to the repository in encrypted form** so every machine gets identical secrets via `git pull`. The only gate protecting it is the Ansible Vault password.
+The file `ansible/host_vars/all/secrets.yml` holds secret values (Home/Work WiFi SSID + passwords, NAS/SMB credentials, per-host SSH keypairs) and is **always committed to the repository in encrypted form** so every machine gets identical secrets via `git pull`. The only gate protecting it is the Ansible Vault password.
 
 1. If the file is not yet encrypted (it may exist as a plaintext template from the initial commit), encrypt it and set a vault password:
 
@@ -259,11 +259,12 @@ The file `ansible/host_vars/all/secrets.yml` holds secret values (WiFi password,
 
    ```yaml
    ---
+   vault_home_wifi_ssid: "MyHomeNetworkSSID"
    vault_home_wifi_password: "MyActualWiFiPassword"
+   vault_work_wifi_ssid: "CorpGuest"
+   vault_work_wifi_password: "WorkWiFiPassword"
    vault_smb_username: "samba_nas_user"
    vault_smb_password: "SambaNASPassword"
-   vault_git_token: "github_pat_..._alphanumeric"
-   vault_git_email: "you@example.com"
 
    vault_tailscale_authkey: "tskey-auth-..."          # one-off Tailscale tailnet auth key
    vault_anyconnect_gateway: "vpn.yourorg.example"    # Cisco AnyConnect VPN gateway
@@ -352,9 +353,10 @@ cd ~/src/nix-ubuntu-infra
 
 `setup.sh` will prompt you for:
 
-- **PAT** — your Git personal access token (used to create `~/.git-credentials` for future pulls).
 - **Become password** — your `sudo` password (Ansible escalates to root).
 - **Vault password** — the password you set in Step 5.
+
+Git authentication is SSH-only: make sure the host's public key (deployed by the playbook to `~/.ssh/id_ed25519.pub`) is registered on GitHub/GitLab before the machine tries to push.
 
 The script runs each phase with an on-screen `[-]` label. See [What the Bootstrap Actually Does](#what-the-bootstrap-actually-does) for the phase-by-phase breakdown, including what it looks like when everything succeeds.
 
@@ -381,15 +383,14 @@ NAS SMB/NFS mounts are currently disabled; the `~/NAS-NFS` / `~/NAS-SMB` symlink
 
 ## What the Bootstrap Actually Does
 
-`setup.sh` has eight phases.
+`setup.sh` has six phases.
 
-### Phase 1-2 — Credentials and base dependencies
+### Phase 1 — Base dependencies
 
-- Reads your PAT (hidden input).
 - `sudo apt update && sudo apt install -y ansible git curl`.
-- Writes `~/.git-credentials` (mode `0600`) with `https://oauth2:<TOKEN>@github.com` and `@gitlab.com`, so future `git pull`/`git push` from this repo authenticate without interactive prompts.
+- Git authentication is SSH-only: the playbook later deploys `~/.ssh/id_ed25519` from the vault, so the host's public key just needs to be registered on GitHub/GitLab.
 
-### Phase 3 — Ansible playbook (the long one)
+### Phase 2 — Ansible playbook (the long one)
 
 The playbook (`ansible/playbook.yml`) runs in two blocks.
 
@@ -403,7 +404,8 @@ The playbook (`ansible/playbook.yml`) runs in two blocks.
 | Install desktop system daemons | `bluez`, `udisks2`, `polkitd` (system APT packages) with `bluetooth`, `udisks2` and `polkit` services enabled — the system side the user-session tools in `nix/modules/desktop.nix` depend on |
 | Bind user to hardware groups | Adds your user to `video`, `input` groups (needed for Wayland input/DRM) |
 | Enable `seatd` | Starts the seat management daemon (login-session-free input/DRM access) |
-| Configure Home WiFi | Creates a `Home-WiFi` network profile via `nmcli` using the vault password |
+| Configure Home WiFi | Creates a `Home-WiFi` network profile via `nmcli` (SSID + password from vault, higher autoconnect priority) |
+| Configure Work WiFi | Creates a `Work-WiFi` network profile via `nmcli` (SSID + password from vault) |
 | Install display manager | `greetd` + `cage`, then deploys `/etc/greetd/config.toml` that boots straight into `sway` and restarts the service |
 | Install storage clients | `nfs-common`, `cifs-utils`; creates `/mnt/nas/nfs` and `/mnt/nas/smb` — **currently disabled** (commented out) |
 | Deploy SMB credentials | `/etc/samba/.smbcredentials` (mode `0600`, root-owned) from vault values — **currently disabled** (commented out) |
@@ -418,23 +420,20 @@ The playbook (`ansible/playbook.yml`) runs in two blocks.
 | SSH private key | Writes `~/.ssh/id_ed25519` (mode `0600`) — the per-host key from `vault_host_ssh_private_keys`, or the shared fallback if no per-host entry exists |
 | SSH public key | Writes `~/.ssh/id_ed25519.pub` (mode `0644`) from `vault_host_ssh_public_keys` when the host has one |
 | Bin directory | Ensures `~/.local/bin` exists |
-| Git credentials | Writes `~/.git-credentials` (mode `0600`) from the vault token |
-| Download Discord | Fetches the Discord `.deb` to `/tmp` and installs it via APT |
-| Install Rustup | Runs the official `rustup` installer (skipped if `~/.cargo/bin/rustc` already exists) |
 
-### Phase 4 — Install Nix
+### Phase 3 — Install Nix
 
 If `/nix` does not exist, installs the **standalone Nix package manager** in daemon mode via the official installer, then sources `/etc/profile.d/nix.sh` for the rest of the script. On subsequent runs this is skipped.
 
-### Phase 5 — Home Manager channels
+### Phase 4 — Home Manager channels
 
 Adds the `nixpkgs-unstable`, `home-manager` (master branch), and `nur` (Nix User Repositories, used to declare Firefox add-ons such as Proton Pass and Tridactyl) channels, then runs `nix-channel --update`. This setup tracks the unstable channels rather than release channels, so `home.stateVersion` stays pinned to the current stable release for compatibility.
 
-### Phase 6 — Link the configuration
+### Phase 5 — Link the configuration
 
 Creates `~/.config/home-manager` and symlinks `nix/home.nix` into it, so `home-manager` reads exactly this repository's file.
 
-### Phase 7 — Build the user profile
+### Phase 6 — Build the user profile
 
 Runs `nix-shell '<home-manager>' -A install`, which downloads and builds the full user profile (all `home.packages`, Sway config, dotfiles, SSH/Git config, NAS symlinks). This is the slowest phase on a fresh machine.
 
@@ -525,7 +524,7 @@ Ansible merges `host_vars/all/vars.yml` into every host, then overlays `host_var
 - Put things that are true everywhere in `host_vars/all/vars.yml` (NAS share paths when mounts are enabled, and the machine-agnostic defaults `is_laptop`/`install_nvidia`/`additional_packages`).
 - Put things that differ per machine in `host_vars/<hostname>.yml` (laptop vs desktop flags, extra packages).
 
-The secrets vault (`host_vars/all/secrets.yml`) is common by design — WiFi, NAS and Git credentials are assumed identical across your fleet. If you need per-machine secrets, create `host_vars/<hostname>.yml` mirroring the same variables with a different encryption.
+The secrets vault (`host_vars/all/secrets.yml`) is common by design — WiFi and NAS credentials are assumed identical across your fleet. If you need per-machine secrets, create `host_vars/<hostname>.yml` mirroring the same variables with a different encryption.
 
 The same split exists on the Nix side. `nix/home.nix` is the Home Manager entry point; it imports `nix/common.nix` (applies to every machine) plus the host module matching this machine's hostname (`nix/hosts/<hostname>.nix`), selected automatically from `/etc/hostname` — no manual wiring. Put shared user packages and settings in `nix/common.nix`; per-machine user packages and settings in `nix/hosts/<hostname>.nix`. If a machine has no host module, `home-manager switch` fails with a message naming the file to create.
 
@@ -574,8 +573,8 @@ System-level equivalents live in the Ansible playbook:
   ansible-vault rekey   <file>        # change the vault password
   ```
 
-- The playbook deploys secrets with restrictive modes: `~/.ssh` (0700), `~/.ssh/id_ed25519` (0600), `~/.ssh/id_ed25519.pub` (0644), `~/.git-credentials` (0600), `/etc/samba/.smbcredentials` (0600, root-owned).
-- The Git token used by `setup.sh` writes `~/.git-credentials` with mode `0600`. It is also the token used for cloning — if you rotate it, run the playbook again or rewrite the file.
+- The playbook deploys secrets with restrictive modes: `~/.ssh` (0700), `~/.ssh/id_ed25519` (0600), `~/.ssh/id_ed25519.pub` (0644), `/etc/samba/.smbcredentials` (0600, root-owned).
+- Git authentication is **SSH-only** — there is no token/`~/.git-credentials` in this setup. Make sure each host's public key (`~/.ssh/id_ed25519.pub`, deployed from the vault) is registered on GitHub/GitLab.
 - **Do not** commit decrypted vault files, plaintext `.env`-style secrets, or your real SSH private key anywhere else. SSH keys are deployed from the vault per host — the matching key is written to `~/.ssh/id_ed25519` on each machine automatically.
 - Back up your vault password in a password manager. Losing it means you cannot decrypt the secrets file.
 
@@ -638,19 +637,11 @@ You must log into a fresh shell (or source `/etc/profile.d/nix.sh`) after instal
 **`nix-shell '<home-manager>' -A install` fails on new Nix**
 Older installs used the `nixos` channel; standalone installs need `nixpkgs` as well. Ensure `nix-channel --list` shows `nixpkgs` (pointing at `nixpkgs-unstable`), `home-manager` (pointing at the master branch tarball), and `nur`, then `nix-channel --update`. If the error mentions an unstable module API, your Nix/Home Manager are version-mismatched — upgrade Home Manager (`home-manager upgrade`) before retrying.
 
-**Discord `.deb` download or install fails**
-Transient download failures or new architecture packages. Re-run `infra-apply-system`. To skip Discord entirely, comment out the two Discord tasks in `ansible/playbook.yml` (Section B).
-
-**`rustup` task fails: curl error**
-The installer is fetched from the internet; re-run the playbook (the task is idempotent — it is skipped once `~/.cargo/bin/rustc` exists). You can also install Rust via Nix instead and delete this task.
+**Discord/Rustup are no longer installed**
+Both were removed from the playbook. If a previous run installed them, uninstall manually (Discord: `sudo apt purge discord`; Rustup: `rm -rf ~/.cargo ~/.rustup`).
 
 **`infra-sync-all` fails: `git pull` asks for a password**
-Your `~/.git-credentials` is missing or the token is invalid. Re-run `setup.sh` (it recreates the file), or write the token again:
-
-```bash
-echo "https://oauth2:<TOKEN>@github.com" > ~/.git-credentials
-chmod 600 ~/.git-credentials
-```
+Git is SSH-only in this setup. The playbook deploys `~/.ssh/id_ed25519`, but the matching public key must be registered with GitHub (and GitLab, if used). Add the machine's `~/.ssh/id_ed25519.pub` to your GitHub account, then verify with `ssh -T git@github.com`. The per-host public key is in the vault and restored automatically on reinstall — it only needs to be registered on GitHub once per host.
 
 **My NAS shares don't mount**
 NAS SMB/NFS mounts ship **disabled** (commented out) — check they've been re-enabled first. If you're actively troubleshooting after enabling: check the mount anchor directories exist (`/mnt/nas/nfs`, `/mnt/nas/smb`) and that the `.mount`/`.automount` units are active: `systemctl list-units | grep mnt-nas`. Then `ls /mnt/nas/nfs` to trigger the automount. Verify the share addresses in `host_vars/all/vars.yml` match your NAS.

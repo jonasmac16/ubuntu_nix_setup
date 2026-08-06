@@ -15,11 +15,12 @@
   programs.git = {
     enable = true;
     settings = {
+      # TODO: set your real name/email or commits will be misattributed.
+      # Authentication is SSH-only (the playbook deploys ~/.ssh/id_ed25519).
       user = {
         name = "Your Name";
         email = "you@example.com";
       };
-      credential.helper = "store --file ~/.git-credentials";
       init.defaultBranch = "main";
       push.autoSetupRemote = true;
     };

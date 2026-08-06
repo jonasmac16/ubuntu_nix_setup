@@ -67,10 +67,21 @@
           community.general.nmcli:
             conn_name: "Home-WiFi"
             type: wifi
-            ssid: "MyHomeNetworkSSID"
+            ssid: "{{ vault_home_wifi_ssid }}"
             wifi_sec:
               key-mgmt: wpa-psk
               psk: "{{ vault_home_wifi_password }}"
+            autoconnect_priority: 10 # prefer Home-WiFi when work is also in range
+            state: present
+
+        - name: Configure local work wireless network profiles
+          community.general.nmcli:
+            conn_name: "Work-WiFi"
+            type: wifi
+            ssid: "{{ vault_work_wifi_ssid }}"
+            wifi_sec:
+              key-mgmt: wpa-psk
+              psk: "{{ vault_work_wifi_password }}"
             state: present
 
         - name: Setup lightweight display manager gateway
@@ -318,33 +329,3 @@
             path: "{{ ansible_env.HOME }}/.local/bin"
             state: directory
             mode: '0755'
-
-        - name: Deploy secure local Git token storage files
-          ansible.builtin.copy:
-            dest: "{{ ansible_env.HOME }}/.git-credentials"
-            mode: '0600'
-            content: |
-              https://oauth2:{{ vault_git_token }}@github.com
-              https://oauth2:{{ vault_git_token }}@gitlab.com
-
-        - name: "Download external binaries (Example: Discord)"
-          ansible.builtin.get_url:
-            url: "https://discord.com/api/download?platform=linux&format=deb"
-            dest: "/tmp/discord.deb"
-            mode: '0644'
-          register: user_deb_dl
-
-        - name: Install non-Nix packages via system-apt handles
-          ansible.builtin.apt:
-            deb: "/tmp/discord.deb"
-            state: present
-          become: true
-          when: user_deb_dl.changed
-
-        - name: "Automate non-packaged vendor scripts (Example: Rustup)"
-          ansible.builtin.shell: |
-            set -o pipefail
-            curl --proto '=https' --tlsv1.2 -sSf https://rustup.rs | sh -s -- -y --no-modify-path
-          args:
-            creates: "{{ ansible_env.HOME }}/.cargo/bin/rustc"
-            executable: /bin/bash
