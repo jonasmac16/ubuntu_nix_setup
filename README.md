@@ -293,6 +293,7 @@ The file `ansible/host_vars/all/secrets.yml` holds secret values (Home/Work WiFi
      nas:
        hostname: "192.168.1.100"
        user: "storage_admin"
+       port: 2222                  # optional; omitted = ssh default 22
      workstation-orcrb:
        hostname: "192.168.1.50"
        user: "jonas"
@@ -427,7 +428,7 @@ The playbook (`ansible/playbook.yml`) runs in two blocks.
 | SSH directory | Ensures `~/.ssh` exists (mode `0700`) |
 | SSH private key | Writes `~/.ssh/id_ed25519` (mode `0600`) — the per-host key from `vault_host_ssh_private_keys`, or the shared fallback if no per-host entry exists |
 | SSH public key | Writes `~/.ssh/id_ed25519.pub` (mode `0644`) from `vault_host_ssh_public_keys` when the host has one |
-| SSH host definitions | Writes `~/.ssh/config.d/10-vault-hosts` (mode `0600`) from `vault_ssh_hosts` — hostnames/IPs/users stay in the vault, picked up by home-manager's `Include ~/.ssh/config.d/*` |
+| SSH host definitions | Writes `~/.ssh/config.d/10-vault-hosts` (mode `0600`) from `vault_ssh_hosts` — hostnames/IPs/users/optional ports stay in the vault, picked up by home-manager's `Include ~/.ssh/config.d/*` |
 | Bin directory | Ensures `~/.local/bin` exists |
 
 ### Phase 3 — Install Nix

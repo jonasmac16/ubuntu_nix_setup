@@ -2,4 +2,7 @@
 Host {{ host }}
     HostName {{ attrs.hostname }}
     User {{ attrs.user }}
+{% if attrs.port is defined %}
+    Port {{ attrs.port }}
+{% endif %}
 {% endfor %}
