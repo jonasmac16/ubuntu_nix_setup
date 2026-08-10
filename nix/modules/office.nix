@@ -36,4 +36,35 @@
       echo "[warn] Zotero LibreOffice integration .oxt not found in the zotero package."
     fi
   '';
+
+  # Zotero linked attachments on OneDrive. Linked files live in the
+  # 01_zotero_library folder (the Linked Attachment Base Directory); the
+  # 02_zotero_reading_library folder is for PDFs you copy onto a tablet for
+  # reading — both sync via the OneDrive client. The database
+  # (~/Zotero/zotero.sqlite) stays local and keeps syncing metadata with
+  # zotero.org; linked files are never uploaded there.
+  home.file = {
+    "OneDrive/shared_work/xx_bibliography/01_zotero_library/.gitkeep".text = "";
+    "OneDrive/shared_work/xx_bibliography/02_zotero_reading_library/.gitkeep".text = "";
+  };
+
+  # Seed the Linked Attachment Base Directory pref into Zotero's prefs.js.
+  # Zotero rewrites prefs.js at runtime, so this only appends when the pref is
+  # missing and skips entirely while Zotero is running (set it manually in
+  # Settings -> Advanced -> Files & Folders in that case, or re-run the switch
+  # after Zotero's first launch).
+  home.activation.zoteroLinkedBaseDir = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+    ZBASE="${config.home.homeDirectory}/OneDrive/shared_work/xx_bibliography/01_zotero_library"
+    if pgrep -x zotero >/dev/null 2>&1; then
+      echo "[warn] Zotero is running; set Linked Attachment Base Directory manually in Settings -> Advanced -> Files & Folders."
+    else
+      for pf in "$HOME/.zotero/zotero/"*"/prefs.js" "$HOME/.zotero/Profiles/"*"/prefs.js"; do
+        [ -f "$pf" ] || continue
+        if ! grep -q 'extensions.zotero.baseAttachmentPath' "$pf"; then
+          echo "user_pref(\"extensions.zotero.baseAttachmentPath\", \"$ZBASE\");" >> "$pf"
+          echo "[zotero] Linked Attachment Base Directory -> $ZBASE ($pf)"
+        fi
+      done
+    fi
+  '';
 }

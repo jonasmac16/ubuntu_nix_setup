@@ -664,6 +664,14 @@ The per-host key lookup is keyed by `inventory_hostname`. If `~/.ssh/id_ed25519`
 **OneDrive not syncing (first run)**
 The `onedrive` service (see `nix/modules/onedrive.nix`) is enabled at login but needs a one-time authorization. Run `onedrive` once — it prints a URL; open it, sign in with your Microsoft account, then the monitor service will sync `~/OneDrive`. Until you authorize, the service exits and restarts every 10s, which is expected. Config lives at `~/.config/onedrive/config` (managed by home-manager); the sync directory defaults to `~/OneDrive`.
 
+**Zotero attachments on OneDrive (linked files)**
+PDFs and other attachments are kept as **linked files** under `~/OneDrive/shared_work/xx_bibliography/01_zotero_library` so they sync across machines via OneDrive; the Zotero database (`~/Zotero/zotero.sqlite`) stays local and keeps syncing metadata with zotero.org (linked files are never uploaded there). `~/OneDrive/shared_work/xx_bibliography/02_zotero_reading_library` is the sibling folder for PDFs you copy to a tablet for reading.
+
+- **Auto-configured** on `home-manager switch`: both folders are created, and the Linked Attachment Base Directory pref (`extensions.zotero.baseAttachmentPath`) is seeded into `~/.zotero/…/prefs.js` — unless Zotero is running (skip + warning), or Zotero hasn't run yet (no `prefs.js` yet; re-run the switch after its first launch). Fallback: **Settings → Advanced → Files & Folders → Linked Attachment Base Directory → `~/OneDrive/shared_work/xx_bibliography/01_zotero_library`**.
+- **Adding files**: place the PDF under `01_zotero_library` and attach as a link (Ctrl+Shift drag, or right-click an item → **Add Attachment → Attach Link to File…**). To relocate existing *stored* attachments: select them, right-click → **Manage Attachments → Convert Stored Files to Linked Files** (moves them out of `~/Zotero/storage` into the base dir).
+- **Files only on OneDrive**: linked files never reach zotero.org. If you keep any *stored* attachments, uncheck **Settings → Sync → "Sync attachment files"** so those don't mirror to Zotero's servers either.
+- **Auto-filing note**: Zotfile no longer works in Zotero 7; use the Zotmoov or Attanger plugins to auto-file web-connector downloads into the linked folder.
+
 **Rollback / teardown**
 Ansible is idempotent — it converges *towards* the declared state but won't uninstall packages on its own. To revert a change, edit the repository, push, and re-apply. To fully remove a piece of software, remove it from the playbook (or Nix) and purge it manually on the machine; Nix rolls back easily with `home-manager generations` + `home-manager switch --generation N`.
 
