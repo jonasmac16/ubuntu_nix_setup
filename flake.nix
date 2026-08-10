@@ -26,6 +26,7 @@
           nur.overlays.default
           (final: prev: {
             qupath = final.callPackage ./nix/packages/qupath.nix { };
+            openin-native-host = final.callPackage ./nix/packages/openin-native-host.nix { };
           })
         ];
       };
@@ -43,6 +44,7 @@
       packages.${system} = {
         default = homeConfiguration.activationPackage;
         qupath = pkgs.qupath;
+        openin-native-host = pkgs.openin-native-host;
       };
     };
 }

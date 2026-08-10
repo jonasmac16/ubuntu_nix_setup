@@ -88,7 +88,7 @@ nix-ubuntu-infra/
 ├── .gitignore                 # Blocks retry files, plaintext secrets, Nix build outputs
 ├── README.md                  # This document
 ├── setup.sh                   # One-shot bootstrap for a fresh Ubuntu machine
-├── flake.nix                  # Nix flake: pinned nixpkgs/home-manager/NUR inputs + overlays (nur, qupath)
+├── flake.nix                  # Nix flake: pinned nixpkgs/home-manager/NUR inputs + overlays (nur, qupath, openin-native-host)
 ├── flake.lock                 # Locked input revisions (generated, committed)
 │
 ├── ansible/                   # System hardware & package alignment
@@ -108,7 +108,8 @@ nix-ubuntu-infra/
     │   ├── workstation-orcrb.nix  # Desktop-specific packages/settings
     │   └── laptop-xps.nix         # Laptop-specific packages/settings
     ├── packages/              # Out-of-tree packages (flake overlay)
-    │   └── qupath.nix         # QuPath (official jpackage binary, patched for Nix)
+    │   ├── qupath.nix         # QuPath (official jpackage binary, patched for Nix)
+    │   └── openin-native-host.nix  # Native messaging host for the Open in Firefox extension
     └── modules/               # Grouped Nix modules (see "Software profile by module")
         ├── sway.nix           # Wayland compositor, bar, launcher, keybinds (common)
         ├── shell.nix          # Bash aliases, SSH blocks, Git rules (common)
@@ -450,7 +451,7 @@ Runs `nix flake lock`, which pins the `nixpkgs` (nixos-unstable), `home-manager`
 
 ### Phase 6 — Build and activate the user profile
 
-Runs `nix build --impure .#default` then `./result/activate`. The `--impure` flag is required because `nix/home.nix` reads `/etc/hostname` to auto-select the host module — pure flake evaluation forbids access to absolute paths outside the flake — while the flake **inputs** stay pinned by `flake.lock` regardless. The flake's overlays supply `pkgs.nur` (Firefox add-ons such as Proton Pass and Tridactyl) and `pkgs.qupath` (official QuPath binary, see `nix/packages/qupath.nix`); the `default` package is Home Manager's `activationPackage`, which installs the full user profile (all `home.packages`, Sway config, dotfiles, SSH/Git config, NAS symlinks). This is the slowest phase on a fresh machine.
+Runs `nix build --impure .#default` then `./result/activate`. The `--impure` flag is required because `nix/home.nix` reads `/etc/hostname` to auto-select the host module — pure flake evaluation forbids access to absolute paths outside the flake — while the flake **inputs** stay pinned by `flake.lock` regardless. The flake's overlays supply `pkgs.nur` (Firefox add-ons such as Proton Pass and Tridactyl), `pkgs.qupath` (official QuPath binary, see `nix/packages/qupath.nix`) and `pkgs.openin-native-host` (native messaging host for the Open in Firefox extension, see `nix/packages/openin-native-host.nix`); the `default` package is Home Manager's `activationPackage`, which installs the full user profile (all `home.packages`, Sway config, dotfiles, SSH/Git config, NAS symlinks). This is the slowest phase on a fresh machine.
 
 ---
 
@@ -551,9 +552,9 @@ User-level software is grouped into functional modules under `nix/modules/`. `co
 
 | Module | Software |
 |--------|----------|
-| `browsers.nix` | Firefox (add-ons: Proton Pass, Bitwarden, Dark Reader, Consent-O-Matic, Privacy Badger, Tridactyl, Sidebery, Zotero Connector; custom `userChrome`/`userContent` CSS; auto-enabled) and Chromium (extensions: Proton Pass, Bitwarden, Vimium, uBlock Origin, Dark Reader; PWAs for **MS Teams**, **Outlook 365**, **ChatGPT**) |
+| `browsers.nix` | Firefox (add-ons: Proton Pass, Bitwarden, Dark Reader, Consent-O-Matic, Privacy Badger, Tridactyl, Sidebery, Zotero Connector; custom `userChrome`/`userContent` CSS; auto-enabled) and Chromium (extensions: Proton Pass, Bitwarden, Vimium, uBlock Origin, Dark Reader, Open in Firefox; PWAs for **MS Teams**, **Outlook 365**, **ChatGPT**) — Open in Firefox ships with its native messaging host (`openin-native-host`, see `nix/packages/openin-native-host.nix`) and a reverse-mode managed policy: Teams, uni Outlook/SharePoint and ChatGPT stay in Chromium, everything else auto-opens in Firefox |
 | `development.nix` | VSCode (Python/Pylance, Jupyter, Julia, Rainbow CSV, Remote-SSH, Docker, Nix IDE, Prettier, ErrorLens, GitLens, Material Icon Theme), Alacritty, Neovim (minimal init.lua), terminal tools (btop, zoxide, bat, fd, jq, tmux, eza, yazi, lazygit), opencode, pi-coding-agent, quickemu, distrobox, podman, apptainer, lftp, openssh (sftp) |
-| `office.nix` | LibreOffice (+ en_GB/en_US dictionaries), Zotero (+ JRE, auto-installed LibreOffice add-in, and Zotmoov auto-filing attachments into `01_zotero_library` by first author/year), Obsidian, yEd |
+| `office.nix` | LibreOffice (+ en_GB/en_US dictionaries), Zotero (+ JRE, auto-installed LibreOffice add-in, and Zotmoov auto-filing attachments into `01_zotero_library` by first author/year, plus the Better BibTeX plugin for BibTeX/BibLaTeX export), Obsidian, yEd |
 | `media.nix` | mpv, VLC, GIMP, ImageMagick, Inkscape |
 | `science.nix` | Fiji + QuPath (official jpackage binary repackaged for Nix via the flake overlay, see `nix/packages/qupath.nix`) |
 | `files.nix` | Thunar (+ volume/archive/media-tag plugins, thumbnails), gvfs, sshfs |
@@ -678,6 +679,7 @@ PDFs and other attachments are kept as **linked files** under `~/OneDrive/shared
 - **Adding files**: place the PDF under `01_zotero_library` and attach as a link (Ctrl+Shift drag, or right-click an item → **Add Attachment → Attach Link to File…**). To relocate existing *stored* attachments: select them, right-click → **Manage Attachments → Convert Stored Files to Linked Files** (moves them out of `~/Zotero/storage` into the base dir).
 - **Files only on OneDrive**: linked files never reach zotero.org. If you keep any *stored* attachments, uncheck **Settings → Sync → "Sync attachment files"** so those don't mirror to Zotero's servers either.
 - **Auto-filing (ZotMoov)**: Zotfile doesn't work in Zotero 7, so the **ZotMoov** plugin (installed by Home Manager, pinned + checksum-verified) takes over. New attachments are **automatically moved** into the complete library as linked files, organised as `01_zotero_library/<FirstAuthor>/<Year>/`. Right-click an item → **ZotMoov → Copy to Reading Library** to drop a PDF copy into `02_zotero_reading_library/<FirstAuthor>/<Year>/` (for tablet reading) and tag the item `reading`. After a switch, restart Zotero; if the plugin doesn't appear, close Zotero and install `~/.local/share/zotmoov/zotmoov-1.2.32-fx.xpi` via **Tools → Plugins → Install Add-on From File**, then re-run `home-manager switch` to seed its config.
+- **Citations (Better BibTeX)**: the **Better BibTeX** plugin (pinned v9.0.55, checksum-verified, same install mechanism as ZotMoov) provides citation keys and BibTeX/BibLaTeX export for Pandoc/LaTeX. After a switch, restart Zotero; if it doesn't load, install the fallback `~/.local/share/zotero-better-bibtex/zotero-better-bibtex-9.0.55.xpi` via **Tools → Plugins → Install Add-on From File**. Configure it in the plugin's preferences on first launch.
 
 **Rollback / teardown**
 Ansible is idempotent — it converges *towards* the declared state but won't uninstall packages on its own. To revert a change, edit the repository, push, and re-apply. To fully remove a piece of software, remove it from the playbook (or Nix) and purge it manually on the machine; Nix rolls back easily with `home-manager generations` + `home-manager switch --generation N`.

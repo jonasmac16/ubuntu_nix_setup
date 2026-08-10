@@ -137,4 +137,54 @@
     add_pref 'extensions.zotmoov.delete_files' 'false'
     add_pref 'extensions.zotmoov.custom_menu_items' "{\"Copy to Reading Library\":[{\"command_name\":\"copy\",\"directory\":\"$ZBASE02\",\"enable_customdir\":true,\"enable_subdir\":true},{\"command_name\":\"addtag\",\"tag\":\"reading\"}]}"
   '';
+
+  # Better BibTeX plugin: exports citations / bibliographies as BibTeX or BibLaTeX
+  # (e.g. for Pandoc/LaTeX) and provides citation-key automation. Installed the
+  # same way as ZotMoov: a packed .xpi is dropped into the profile extensions
+  # dir; Zotero loads it on the next launch. v9.x requires Zotero 8+ (the locked
+  # nixpkgs ships Zotero 9). No prefs are seeded; configure in the plugin's
+  # preferences after the first launch.
+  home.activation.installBBT = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+    if pgrep -x zotero >/dev/null 2>&1; then
+      echo "[bbt] Zotero is running; close it and re-run the switch to install Better BibTeX."
+      exit 0
+    fi
+
+    BBT_VERSION="9.0.55"
+    BBT_SHA256="2d914ebb174c2c590ecff741a6903f1979065b42740f301d938ec2cb6c03e4d6"
+    BBT_URL="https://github.com/retorquere/zotero-better-bibtex/releases/download/v$BBT_VERSION/zotero-better-bibtex-$BBT_VERSION.xpi"
+
+    PROFILE=""
+    for cand in "$HOME/Zotero/prefs.js" "$HOME/.zotero/prefs.js" "$HOME"/.zotero/zotero/*/prefs.js "$HOME"/.zotero/Profiles/*/prefs.js; do
+      [ -f "$cand" ] && PROFILE="$(${pkgs.coreutils}/bin/dirname "$cand")" && break
+    done
+    if [ -z "$PROFILE" ]; then
+      echo "[bbt] No Zotero profile found yet; Better BibTeX is installed on the next switch after Zotero's first launch."
+      exit 0
+    fi
+    echo "[bbt] Zotero profile: $PROFILE"
+
+    ${pkgs.coreutils}/bin/mkdir -p "$PROFILE/extensions"
+    XPI="$PROFILE/extensions/zotero-better-bibtex-$BBT_VERSION.xpi"
+    if [ -f "$XPI" ] && [ "$(${pkgs.coreutils}/bin/sha256sum "$XPI" | ${pkgs.coreutils}/bin/cut -d' ' -f1)" = "$BBT_SHA256" ]; then
+      echo "[bbt] plugin already present and verified"
+    else
+      echo "[bbt] downloading Better BibTeX $BBT_VERSION ..."
+      ${pkgs.curl}/bin/curl -fsSL "$BBT_URL" -o "$XPI"
+      ACTUAL="$(${pkgs.coreutils}/bin/sha256sum "$XPI" | ${pkgs.coreutils}/bin/cut -d' ' -f1)"
+      if [ "$ACTUAL" != "$BBT_SHA256" ]; then
+        echo "[bbt] ERROR: checksum mismatch (got $ACTUAL); refusing to install."
+        ${pkgs.coreutils}/bin/rm -f "$XPI"
+        exit 1
+      fi
+    fi
+
+    # Stage a fallback copy for manual install if Zotero refuses to sideload.
+    ${pkgs.coreutils}/bin/mkdir -p "$HOME/.local/share/zotero-better-bibtex"
+    ${pkgs.coreutils}/bin/cp -f "$XPI" "$HOME/.local/share/zotero-better-bibtex/zotero-better-bibtex-$BBT_VERSION.xpi"
+    echo "[bbt] installed; restart Zotero. Fallback if it doesn't load: Tools -> Plugins -> Install Add-on From File -> $HOME/.local/share/zotero-better-bibtex/zotero-better-bibtex-$BBT_VERSION.xpi"
+
+    # Force Zotero's AddonManager to re-scan the extensions directory.
+    ${pkgs.gnused}/bin/sed -i -E '/extensions\.last(AppBuildId|AppVersion|PlatformVersion)/d' "$PROFILE/prefs.js"
+  '';
 }

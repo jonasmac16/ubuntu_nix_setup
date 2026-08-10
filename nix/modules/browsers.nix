@@ -58,7 +58,39 @@
       { id = "dbepggeogbaibhgnhhndojpepiihcmeb"; } # Vimium
       { id = "cjpalhdlnbpafiamejdnhcphjbkeiagm"; } # uBlock Origin
       { id = "eimadpbcbfnmbkopoojfekhnkhdbieeh"; } # Dark Reader
+      { id = "lmeddoobegbaiopohmpmmobpnpjifpii"; } # Open in Firefox
     ];
+  };
+
+  # Open in Firefox (native messaging host). The extension hands a URL to the
+  # com.add0n.node host over Chrome's native-messaging protocol, which spawns
+  # Firefox. The manifest below mirrors what the upstream native-client
+  # installer would write into the user-level NativeMessagingHosts directory.
+  home.file.".config/chromium/NativeMessagingHosts/com.add0n.node.json" = {
+    text = builtins.toJSON {
+      name = "com.add0n.node";
+      description = "NodeJS Host by WebExtension.ORG for Browser Native Messaging";
+      path = "${pkgs.openin-native-host}/share/openin/run.sh";
+      type = "stdio";
+      allowed_origins = [ "chrome-extension://lmeddoobegbaiopohmpmmobpnpjifpii/" ];
+    };
+  };
+
+  # Open in Firefox managed policy (chrome.storage.managed). In reverse mode the
+  # listed base URLs are EXEMPT: left-clicked links on these hosts stay in
+  # Chromium while everything else is handed to Firefox. Note the extension
+  # ignores `urls` when `hosts` is non-empty, so `hosts` must stay empty.
+  home.file.".config/chromium/policies/managed/lmeddoobegbaiopohmpmmobpnpjifpii.json" = {
+    text = builtins.toJSON {
+      hosts = [ ];
+      urls = [
+        "https://teams.microsoft.com/"
+        "https://outlook.cloud.microsoft/"
+        "https://unioxfordnexus.sharepoint.com/"
+        "https://chatgpt.com/"
+      ];
+      reverse = true;
+    };
   };
 
   # Declarative progressive web apps (PWAs) for work / productivity sites.
