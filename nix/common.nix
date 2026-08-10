@@ -17,14 +17,8 @@
     ./modules/onedrive.nix
   ];
 
-  # NUR overlay. The `nur` channel is added by setup.sh; this overlay exposes it
-  # as `pkgs.nur`, which browsers.nix needs for the Firefox add-ons. Without it
-  # the config would fail at evaluation time with "attribute 'nur' missing".
-  nixpkgs.overlays = [
-    (final: prev: {
-      nur = import <nur> { pkgs = prev; };
-    })
-  ];
+  # NUR overlay now lives in the flake (flake.nix), which supplies `pkgs.nur`
+  # (needed by browsers.nix for the Firefox add-ons) and `pkgs.qupath`.
 
   home.username = "jonas";
   home.homeDirectory = "/home/jonas";
@@ -36,6 +30,9 @@
     ripgrep
     fzf
     firefox
+    # Provides the `home-manager` CLI used by `infra-apply-user` (with the
+    # flake: `home-manager switch --impure --flake ~/src/nix-ubuntu-infra#jonas`).
+    home-manager
   ];
 
   # NAS SMB/NFS mounts are currently DISABLED (see ansible/playbook.yml).

@@ -67,4 +67,74 @@
       done
     fi
   '';
+
+  # ZotMoov plugin (Zotfile's Zotero 7 successor): auto-files new attachments
+  # into the complete library (01_zotero_library) by first author then year, and
+  # adds a right-click "Copy to Reading Library" menu entry that copies the
+  # selected item's PDF into the reading library (02_zotero_reading_library) and
+  # tags it "reading". Pinned + checksum-verified; Zotero 7 loads a packed .xpi
+  # placed in the profile extensions dir on the next launch.
+  home.activation.installZotmoov = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+    if pgrep -x zotero >/dev/null 2>&1; then
+      echo "[zotmoov] Zotero is running; close it and re-run the switch to install/configure ZotMoov."
+      exit 0
+    fi
+
+    ZOTMOOV_VERSION="1.2.32"
+    ZOTMOOV_SHA256="7770dc2c62d2aaab2662fd7402afadd058387bff69578481ac039bfc050ecc2b"
+    ZOTMOOV_URL="https://github.com/wileyyugioh/zotmoov/releases/download/$ZOTMOOV_VERSION/zotmoov-$ZOTMOOV_VERSION-fx.xpi"
+
+    PROFILE=""
+    for cand in "$HOME/Zotero/prefs.js" "$HOME/.zotero/prefs.js" "$HOME"/.zotero/zotero/*/prefs.js "$HOME"/.zotero/Profiles/*/prefs.js; do
+      [ -f "$cand" ] && PROFILE="$(${pkgs.coreutils}/bin/dirname "$cand")" && break
+    done
+    if [ -z "$PROFILE" ]; then
+      echo "[zotmoov] No Zotero profile found yet; plugin + prefs are applied on the next switch after Zotero's first launch."
+      exit 0
+    fi
+    echo "[zotmoov] Zotero profile: $PROFILE"
+
+    ${pkgs.coreutils}/bin/mkdir -p "$PROFILE/extensions"
+    XPI="$PROFILE/extensions/zotmoov-$ZOTMOOV_VERSION-fx.xpi"
+    if [ -f "$XPI" ] && [ "$(${pkgs.coreutils}/bin/sha256sum "$XPI" | ${pkgs.coreutils}/bin/cut -d' ' -f1)" = "$ZOTMOOV_SHA256" ]; then
+      echo "[zotmoov] plugin already present and verified"
+    else
+      echo "[zotmoov] downloading ZotMoov $ZOTMOOV_VERSION ..."
+      ${pkgs.curl}/bin/curl -fsSL "$ZOTMOOV_URL" -o "$XPI"
+      ACTUAL="$(${pkgs.coreutils}/bin/sha256sum "$XPI" | ${pkgs.coreutils}/bin/cut -d' ' -f1)"
+      if [ "$ACTUAL" != "$ZOTMOOV_SHA256" ]; then
+        echo "[zotmoov] ERROR: checksum mismatch (got $ACTUAL); refusing to install."
+        ${pkgs.coreutils}/bin/rm -f "$XPI"
+        exit 1
+      fi
+    fi
+
+    # Stage a fallback copy for manual install if Zotero refuses to sideload.
+    ${pkgs.coreutils}/bin/mkdir -p "$HOME/.local/share/zotmoov"
+    ${pkgs.coreutils}/bin/cp -f "$XPI" "$HOME/.local/share/zotmoov/zotmoov-$ZOTMOOV_VERSION-fx.xpi"
+    echo "[zotmoov] installed; restart Zotero. Fallback if it doesn't load: Tools -> Plugins -> Install Add-on From File -> $HOME/.local/share/zotmoov/zotmoov-$ZOTMOOV_VERSION-fx.xpi"
+
+    # Force Zotero's AddonManager to re-scan the extensions directory.
+    ${pkgs.gnused}/bin/sed -i -E '/extensions\.last(AppBuildId|AppVersion|PlatformVersion)/d' "$PROFILE/prefs.js"
+
+    ZBASE01="${config.home.homeDirectory}/OneDrive/shared_work/xx_bibliography/01_zotero_library"
+    ZBASE02="${config.home.homeDirectory}/OneDrive/shared_work/xx_bibliography/02_zotero_reading_library"
+
+    add_pref() {
+      local key="$1" value="$2"
+      if ! grep -qF "$key" "$PROFILE/prefs.js"; then
+        echo "user_pref(\"$key\", $value);" >> "$PROFILE/prefs.js"
+        echo "[zotmoov] seeded pref $key"
+      fi
+    }
+
+    add_pref 'extensions.zotmoov.dst_dir' "\"$ZBASE01\""
+    add_pref 'extensions.zotmoov.enable_automove' 'true'
+    add_pref 'extensions.zotmoov.file_behavior' '"move"'
+    add_pref 'extensions.zotmoov.enable_subdir_move' 'true'
+    add_pref 'extensions.zotmoov.subdirectory_string' '"{%a}/{%y}"'
+    add_pref 'extensions.zotmoov.allowed_fileext' '["pdf","epub","docx","djvu"]'
+    add_pref 'extensions.zotmoov.delete_files' 'false'
+    add_pref 'extensions.zotmoov.custom_menu_items' "{\"Copy to Reading Library\":[{\"command_name\":\"copy\",\"directory\":\"$ZBASE02\",\"enable_customdir\":true,\"enable_subdir\":true},{\"command_name\":\"addtag\",\"tag\":\"reading\"}]}"
+  '';
 }

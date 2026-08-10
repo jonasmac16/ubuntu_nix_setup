@@ -4,8 +4,8 @@
   # Science / bioimaging tooling.
   home.packages = with pkgs; [
     fiji
-    # qupath was removed from nixpkgs (project archived upstream).
-    # Re-add when/if it returns, or install the .deb manually via
-    # the Ansible playbook (Section B).
+    # QuPath is built from the official jpackage binary via the flake overlay
+    # (see nix/packages/qupath.nix) — it is no longer in nixpkgs.
+    qupath
   ];
 }

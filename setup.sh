@@ -33,21 +33,27 @@ else
     echo "[*] Nix cluster paths are already configured"
 fi
 
-# 4. Map target tracking channel trees
-echo "[-] Updating Home Manager indices..."
-nix-channel --add https://nixos.org/channels/nixpkgs-unstable nixpkgs
-nix-channel --add https://github.com/nix-community/home-manager/archive/master.tar.gz home-manager
-nix-channel --add https://github.com/nix-community/NUR/archive/master.tar.gz nur
-nix-channel --update
+# 4. Enable flake support (needed for `nix build .#default` and
+#    `home-manager switch --flake`). The daemon must pick up the change.
+echo "[-] Enabling Nix flake support..."
+sudo mkdir -p /etc/nix
+if ! grep -q "^experimental-features = nix-command flakes" /etc/nix/nix.conf 2>/dev/null; then
+    echo "experimental-features = nix-command flakes" | sudo tee -a /etc/nix/nix.conf >/dev/null
+fi
+if command -v systemctl >/dev/null 2>&1 && systemctl is-system-running >/dev/null 2>&1; then
+    sudo systemctl restart nix-daemon || true
+fi
 
-# 5. Connect configuration paths into operational runtime directories
-echo "[-] Linking local configurations..."
-mkdir -p ~/.config/home-manager
-ln -sf "$(pwd)/nix/home.nix" ~/.config/home-manager/home.nix
+# 5. Lock the flake inputs (nixpkgs, home-manager, NUR) for reproducibility
+echo "[-] Locking flake inputs..."
+nix flake lock
 
-# 6. Compile user profile
-echo "[-] Initiating user profile generation..."
-nix-shell '<home-manager>' -A install
+# 6. Build and activate the user profile from this repository's flake
+#    (--impure so nix/home.nix can read /etc/hostname to auto-select the host
+#    module; flake inputs stay pinned by flake.lock either way)
+echo "[-] Building user profile..."
+nix build --impure .#default
+./result/activate
 
 echo "=========================================================="
 echo " Alignment Complete. Reboot your machine to enter Sway!"

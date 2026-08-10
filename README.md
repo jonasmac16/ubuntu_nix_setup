@@ -88,6 +88,8 @@ nix-ubuntu-infra/
 ├── .gitignore                 # Blocks retry files, plaintext secrets, Nix build outputs
 ├── README.md                  # This document
 ├── setup.sh                   # One-shot bootstrap for a fresh Ubuntu machine
+├── flake.nix                  # Nix flake: pinned nixpkgs/home-manager/NUR inputs + overlays (nur, qupath)
+├── flake.lock                 # Locked input revisions (generated, committed)
 │
 ├── ansible/                   # System hardware & package alignment
 │   ├── inventory.ini          # Local-loopback inventory, grouped by machine role
@@ -105,14 +107,16 @@ nix-ubuntu-infra/
     ├── hosts/                 # Host-specific Nix modules, selected automatically by hostname
     │   ├── workstation-orcrb.nix  # Desktop-specific packages/settings
     │   └── laptop-xps.nix         # Laptop-specific packages/settings
+    ├── packages/              # Out-of-tree packages (flake overlay)
+    │   └── qupath.nix         # QuPath (official jpackage binary, patched for Nix)
     └── modules/               # Grouped Nix modules (see "Software profile by module")
         ├── sway.nix           # Wayland compositor, bar, launcher, keybinds (common)
         ├── shell.nix          # Bash aliases, SSH blocks, Git rules (common)
         ├── browsers.nix       # Firefox (add-ons, CSS, settings) + Chromium (extensions, PWAs)
         ├── development.nix    # VSCode, Alacritty, Neovim, terminal tools, containers, lftp
-        ├── office.nix         # LibreOffice + dicts, Zotero (+ LO add-in), Obsidian, yEd
+        ├── office.nix         # LibreOffice + dicts, Zotero (+ LO add-in, Zotmoov plugin), Obsidian, yEd
         ├── media.nix          # mpv, VLC, GIMP, ImageMagick, Inkscape
-        ├── science.nix        # Fiji (QuPath removed from nixpkgs)
+        ├── science.nix        # Fiji + QuPath (official binary, see nix/packages/qupath.nix)
         ├── files.nix          # Thunar + plugins, sshfs
         ├── security.nix       # Proton Pass, Bitwarden desktop apps
         ├── system.nix         # wdisplays, solaar, nmap, tcpdump
@@ -436,17 +440,17 @@ The playbook (`ansible/playbook.yml`) runs in two blocks.
 
 If `/nix` does not exist, installs the **standalone Nix package manager** in daemon mode via the official installer, then sources `/etc/profile.d/nix.sh` for the rest of the script. On subsequent runs this is skipped.
 
-### Phase 4 — Home Manager channels
+### Phase 4 — Enable Nix flakes
 
-Adds the `nixpkgs-unstable`, `home-manager` (master branch), and `nur` (Nix User Repositories, used to declare Firefox add-ons such as Proton Pass and Tridactyl) channels, then runs `nix-channel --update`. This setup tracks the unstable channels rather than release channels, so `home.stateVersion` stays pinned to the current stable release for compatibility.
+Adds `experimental-features = nix-command flakes` to `/etc/nix/nix.conf` (creating the file if needed) and restarts the `nix-daemon` so the change takes effect. All downstream steps — input pinning, building, and the daily `home-manager switch --flake` — rely on flake support.
 
-### Phase 5 — Link the configuration
+### Phase 5 — Lock the flake inputs
 
-Creates `~/.config/home-manager` and symlinks `nix/home.nix` into it, so `home-manager` reads exactly this repository's file.
+Runs `nix flake lock`, which pins the `nixpkgs` (nixos-unstable), `home-manager` (master), and `nur` inputs to exact revisions in `flake.lock`. This is what replaces the old `nix-channel` tracking — `home.stateVersion` stays pinned to the current stable release for compatibility, while inputs track unstable.
 
-### Phase 6 — Build the user profile
+### Phase 6 — Build and activate the user profile
 
-Runs `nix-shell '<home-manager>' -A install`, which downloads and builds the full user profile (all `home.packages`, Sway config, dotfiles, SSH/Git config, NAS symlinks). This is the slowest phase on a fresh machine.
+Runs `nix build --impure .#default` then `./result/activate`. The `--impure` flag is required because `nix/home.nix` reads `/etc/hostname` to auto-select the host module — pure flake evaluation forbids access to absolute paths outside the flake — while the flake **inputs** stay pinned by `flake.lock` regardless. The flake's overlays supply `pkgs.nur` (Firefox add-ons such as Proton Pass and Tridactyl) and `pkgs.qupath` (official QuPath binary, see `nix/packages/qupath.nix`); the `default` package is Home Manager's `activationPackage`, which installs the full user profile (all `home.packages`, Sway config, dotfiles, SSH/Git config, NAS symlinks). This is the slowest phase on a fresh machine.
 
 ---
 
@@ -480,7 +484,7 @@ All configuration is driven from this repository. The workflow is: **edit → co
 | Alias | Runs |
 |-------|------|
 | `infra-apply-system` | `ansible-playbook -i ansible/inventory.ini ansible/playbook.yml --ask-become-pass --ask-vault-pass` — re-applies the system layer |
-| `infra-apply-user` | `home-manager switch` — re-applies the user layer instantly |
+| `infra-apply-user` | `home-manager switch --impure --flake ~/src/nix-ubuntu-infra#jonas` — re-applies the user layer instantly |
 | `infra-sync-all` | `git pull origin main && infra-apply-system && infra-apply-user` — pull + full converge |
 | `infra-commit` | `git add -A && git commit -m` (append a message) |
 | `infra-push` | `git push origin main` |
@@ -549,9 +553,9 @@ User-level software is grouped into functional modules under `nix/modules/`. `co
 |--------|----------|
 | `browsers.nix` | Firefox (add-ons: Proton Pass, Bitwarden, Dark Reader, Consent-O-Matic, Privacy Badger, Tridactyl, Sidebery, Zotero Connector; custom `userChrome`/`userContent` CSS; auto-enabled) and Chromium (extensions: Proton Pass, Bitwarden, Vimium, uBlock Origin, Dark Reader; PWAs for **MS Teams**, **Outlook 365**, **ChatGPT**) |
 | `development.nix` | VSCode (Python/Pylance, Jupyter, Julia, Rainbow CSV, Remote-SSH, Docker, Nix IDE, Prettier, ErrorLens, GitLens, Material Icon Theme), Alacritty, Neovim (minimal init.lua), terminal tools (btop, zoxide, bat, fd, jq, tmux, eza, yazi, lazygit), opencode, pi-coding-agent, quickemu, distrobox, podman, apptainer, lftp, openssh (sftp) |
-| `office.nix` | LibreOffice (+ en_GB/en_US dictionaries), Zotero (+ JRE and auto-installed LibreOffice add-in), Obsidian, yEd |
+| `office.nix` | LibreOffice (+ en_GB/en_US dictionaries), Zotero (+ JRE, auto-installed LibreOffice add-in, and Zotmoov auto-filing attachments into `01_zotero_library` by first author/year), Obsidian, yEd |
 | `media.nix` | mpv, VLC, GIMP, ImageMagick, Inkscape |
-| `science.nix` | Fiji (QuPath was removed from nixpkgs; see the commented entry in the module) |
+| `science.nix` | Fiji + QuPath (official jpackage binary repackaged for Nix via the flake overlay, see `nix/packages/qupath.nix`) |
 | `files.nix` | Thunar (+ volume/archive/media-tag plugins, thumbnails), gvfs, sshfs |
 | `security.nix` | Proton Pass, Bitwarden Desktop (standalone apps) |
 | `system.nix` | wdisplays (Wayland display-settings GUI), solaar (Logitech), nmap, tcpdump |
@@ -643,11 +647,14 @@ The hook refuses to commit `secrets.yml` in plaintext. Run `ansible-vault encryp
 **greetd shows a black screen / Sway doesn't start**
 Check `systemctl status greetd` and the log at `/var/log/greetd/`. The default config runs `cage agreety --cmd sway`. If Sway itself fails, run `sway -d` from a TTY to see diagnostics; missing `seatd` or `video`/`input` group membership is the usual cause.
 
-**`nix-channel`/`home-manager` not found**
+**`nix`/`home-manager` not found**
 You must log into a fresh shell (or source `/etc/profile.d/nix.sh`) after installing Nix. If the setup script ran without a reboot, run `. /etc/profile.d/nix.sh` first.
 
-**`nix-shell '<home-manager>' -A install` fails on new Nix**
-Older installs used the `nixos` channel; standalone installs need `nixpkgs` as well. Ensure `nix-channel --list` shows `nixpkgs` (pointing at `nixpkgs-unstable`), `home-manager` (pointing at the master branch tarball), and `nur`, then `nix-channel --update`. If the error mentions an unstable module API, your Nix/Home Manager are version-mismatched — upgrade Home Manager (`home-manager upgrade`) before retrying.
+**`nix flake lock` / `nix build .#default` fails: `error: experimental feature 'nix-command' is disabled`**
+Flake support is enabled via `experimental-features = nix-command flakes` in `/etc/nix/nix.conf`. If you edited it while the daemon was running, restart it (`sudo systemctl restart nix-daemon`) and log into a fresh shell.
+
+**`home-manager switch --impure --flake …` fails on new Nix**
+The `home-manager` CLI comes from the `home-manager` package in `home.packages` (see `nix/common.nix`). The first switch is done by `setup.sh` Phase 6 (`nix build --impure .#default && ./result/activate`). The `--impure` flag is not optional: `nix/home.nix` needs to read `/etc/hostname` to pick the host module, which pure flake evaluation forbids. If a config change breaks evaluation, fix the module and re-run `infra-apply-user`. Input revisions are pinned in `flake.lock` — bump them deliberately with `nix flake update` rather than letting them drift.
 
 **Discord/Rustup are no longer installed**
 Both were removed from the playbook. If a previous run installed them, uninstall manually (Discord: `sudo apt purge discord`; Rustup: `rm -rf ~/.cargo ~/.rustup`).
@@ -670,7 +677,7 @@ PDFs and other attachments are kept as **linked files** under `~/OneDrive/shared
 - **Auto-configured** on `home-manager switch`: both folders are created, and the Linked Attachment Base Directory pref (`extensions.zotero.baseAttachmentPath`) is seeded into `~/.zotero/…/prefs.js` — unless Zotero is running (skip + warning), or Zotero hasn't run yet (no `prefs.js` yet; re-run the switch after its first launch). Fallback: **Settings → Advanced → Files & Folders → Linked Attachment Base Directory → `~/OneDrive/shared_work/xx_bibliography/01_zotero_library`**.
 - **Adding files**: place the PDF under `01_zotero_library` and attach as a link (Ctrl+Shift drag, or right-click an item → **Add Attachment → Attach Link to File…**). To relocate existing *stored* attachments: select them, right-click → **Manage Attachments → Convert Stored Files to Linked Files** (moves them out of `~/Zotero/storage` into the base dir).
 - **Files only on OneDrive**: linked files never reach zotero.org. If you keep any *stored* attachments, uncheck **Settings → Sync → "Sync attachment files"** so those don't mirror to Zotero's servers either.
-- **Auto-filing note**: Zotfile no longer works in Zotero 7; use the Zotmoov or Attanger plugins to auto-file web-connector downloads into the linked folder.
+- **Auto-filing (ZotMoov)**: Zotfile doesn't work in Zotero 7, so the **ZotMoov** plugin (installed by Home Manager, pinned + checksum-verified) takes over. New attachments are **automatically moved** into the complete library as linked files, organised as `01_zotero_library/<FirstAuthor>/<Year>/`. Right-click an item → **ZotMoov → Copy to Reading Library** to drop a PDF copy into `02_zotero_reading_library/<FirstAuthor>/<Year>/` (for tablet reading) and tag the item `reading`. After a switch, restart Zotero; if the plugin doesn't appear, close Zotero and install `~/.local/share/zotmoov/zotmoov-1.2.32-fx.xpi` via **Tools → Plugins → Install Add-on From File**, then re-run `home-manager switch` to seed its config.
 
 **Rollback / teardown**
 Ansible is idempotent — it converges *towards* the declared state but won't uninstall packages on its own. To revert a change, edit the repository, push, and re-apply. To fully remove a piece of software, remove it from the playbook (or Nix) and purge it manually on the machine; Nix rolls back easily with `home-manager generations` + `home-manager switch --generation N`.
