@@ -14,6 +14,7 @@
     ./modules/system.nix
     ./modules/desktop.nix
     ./modules/backups.nix
+    ./modules/onedrive.nix
   ];
 
   # NUR overlay. The `nur` channel is added by setup.sh; this overlay exposes it

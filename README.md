@@ -118,6 +118,7 @@ nix-ubuntu-infra/
         ├── system.nix         # wdisplays, solaar, nmap, tcpdump
         ├── desktop.nix        # Wayland desktop essentials (screenshots, clipboard, keyring, portals)
         ├── backups.nix        # rsync, rclone
+        ├── onedrive.nix       # OneDrive client (abraunegg) + monitor service
         └── obs-studio.nix     # OBS Studio (imported by laptop-xps.nix only)
 ```
 
@@ -556,6 +557,7 @@ User-level software is grouped into functional modules under `nix/modules/`. `co
 | `system.nix` | wdisplays (Wayland display-settings GUI), solaar (Logitech), nmap, tcpdump |
 | `desktop.nix` | Wayland desktop essentials: grim/slurp/swappy (screenshots), cliphist + wl-clipboard (clipboard history), pavucontrol + playerctl + brightnessctl (audio/media/brightness), blueman, seahorse, polkit-gnome agent, udiskie auto-mount, gnome-keyring, XDG desktop portals (gtk + wlr) |
 | `backups.nix` | rsync, rclone |
+| `onedrive.nix` | OneDrive client (abraunegg/onedrive) syncing `~/OneDrive`; config at `~/.config/onedrive/config`; auto-enabled monitor service (`onedrive --monitor`) that restarts until the account is authorized |
 | `obs-studio.nix` | OBS Studio — imported by `laptop-xps.nix` only, so it is **not** on the workstation |
 
 System-level equivalents live in the Ansible playbook:
@@ -658,6 +660,9 @@ NAS SMB/NFS mounts ship **disabled** (commented out) — check they've been re-e
 
 **SSH key not restored after a reinstall / wrong key on disk**
 The per-host key lookup is keyed by `inventory_hostname`. If `~/.ssh/id_ed25519` comes back wrong or empty, check that the host's name in `ansible/inventory.ini` exactly matches the key's dict key in `vault_host_ssh_public_keys`/`vault_host_ssh_private_keys`. No per-host entry → the playbook falls back to `vault_ssh_private_key`, and if that is also empty the tasks are skipped entirely. Capture the key with the [SSH key lifecycle](#ssh-key-lifecycle-per-host-keys-in-the-vault) steps and re-run `infra-apply-system`.
+
+**OneDrive not syncing (first run)**
+The `onedrive` service (see `nix/modules/onedrive.nix`) is enabled at login but needs a one-time authorization. Run `onedrive` once — it prints a URL; open it, sign in with your Microsoft account, then the monitor service will sync `~/OneDrive`. Until you authorize, the service exits and restarts every 10s, which is expected. Config lives at `~/.config/onedrive/config` (managed by home-manager); the sync directory defaults to `~/OneDrive`.
 
 **Rollback / teardown**
 Ansible is idempotent — it converges *towards* the declared state but won't uninstall packages on its own. To revert a change, edit the repository, push, and re-apply. To fully remove a piece of software, remove it from the playbook (or Nix) and purge it manually on the machine; Nix rolls back easily with `home-manager generations` + `home-manager switch --generation N`.
