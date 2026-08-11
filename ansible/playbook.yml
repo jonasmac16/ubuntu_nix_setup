@@ -221,8 +221,8 @@
           community.general.nmcli:
             conn_name: "AnyConnect"
             type: vpn
-            vpn_type: openconnect
-            vpn_data:
+            vpn:
+              service-type: org.freedesktop.NetworkManager.openconnect
               gateway: "{{ vault_anyconnect_gateway }}"
               useragent: "{{ vault_anyconnect_user_agent }}"
             state: present
