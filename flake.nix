@@ -22,6 +22,12 @@
       # supplied here by the flake input.
       pkgs = import nixpkgs {
         inherit system;
+        # The profile includes unfree packages (VSCode, Obsidian, Zotero,
+        # Proton Pass, …), so the flake must allow them or the build refuses
+        # to evaluate on fresh hardware.
+        config = {
+          allowUnfree = true;
+        };
         overlays = [
           nur.overlays.default
           (final: prev: {
