@@ -29,7 +29,7 @@ ansible-playbook -i ansible/inventory.ini ansible/playbook.yml --connection=loca
 # 3. Bootstrap standalone Nix layers
 if [ ! -d "/nix" ]; then
     echo "[-] Installing Nix framework..."
-    curl -L https://nixos.org | sh -s -- --daemon
+    curl -L https://releases.nixos.org/nix/nix-2.34.8/install | sh -s -- --daemon
     . /etc/profile.d/nix.sh
 else
     echo "[*] Nix cluster paths are already configured"
