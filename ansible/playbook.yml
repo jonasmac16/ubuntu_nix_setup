@@ -247,7 +247,7 @@
         - name: Join existing Tailscale tailnet
           ansible.builtin.shell: |
             tailscale up --authkey="{{ vault_tailscale_authkey }}" --hostname="{{ inventory_hostname }}"
-          when: tailscale_status.rc != 0
+          when: tailscale_status.rc != 0 and (vault_tailscale_authkey | default('')) | length > 0
 
         - name: Provision network share client utilities
           ansible.builtin.apt:

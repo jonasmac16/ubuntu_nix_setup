@@ -22,7 +22,9 @@ VAULT_ARGS="--ask-vault-pass"
 if [ -f "$HOME/.ansible/vault_pass" ]; then
     VAULT_ARGS="--vault-password-file $HOME/.ansible/vault_pass"
 fi
-ansible-playbook -i ansible/inventory.ini ansible/playbook.yml --connection=local -l "$HOSTNAME_LIMIT" --ask-become-pass $VAULT_ARGS
+# Optional per-run overrides, e.g. ANSIBLE_EXTRA_ARGS="-e install_nvidia=false"
+ANSIBLE_EXTRA_ARGS="${ANSIBLE_EXTRA_ARGS:-}"
+ansible-playbook -i ansible/inventory.ini ansible/playbook.yml --connection=local -l "$HOSTNAME_LIMIT" --ask-become-pass $VAULT_ARGS $ANSIBLE_EXTRA_ARGS
 
 # 3. Bootstrap standalone Nix layers
 if [ ! -d "/nix" ]; then
