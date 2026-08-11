@@ -117,7 +117,7 @@ nix-ubuntu-infra/
         ├── development.nix    # VSCode, Alacritty, Neovim, terminal tools, containers, lftp
         ├── office.nix         # LibreOffice + dicts, Zotero (+ LO add-in, Zotmoov plugin), Obsidian, yEd
         ├── media.nix          # mpv, VLC, GIMP, ImageMagick, Inkscape
-        ├── science.nix        # Fiji + QuPath (official binary, see nix/packages/qupath.nix)
+        ├── science.nix        # Fiji + QuPath (official binary, see nix/packages/qupath.nix) + RStudio
         ├── files.nix          # Thunar + plugins, sshfs
         ├── security.nix       # Proton Pass, Bitwarden desktop apps
         ├── system.nix         # wdisplays, solaar, nmap, tcpdump
@@ -556,7 +556,7 @@ User-level software is grouped into functional modules under `nix/modules/`. `co
 | `development.nix` | VSCode (Python/Pylance, Jupyter, Julia, Rainbow CSV, Remote-SSH, Docker, Nix IDE, Prettier, ErrorLens, GitLens, Material Icon Theme), Alacritty, Neovim (minimal init.lua), terminal tools (btop, zoxide, bat, fd, jq, tmux, eza, yazi, lazygit), opencode, pi-coding-agent, quickemu, distrobox, podman, apptainer, lftp, openssh (sftp) |
 | `office.nix` | LibreOffice (+ en_GB/en_US dictionaries), Zotero (+ JRE, auto-installed LibreOffice add-in, and Zotmoov auto-filing attachments into `01_zotero_library` by first author/year, plus the Better BibTeX plugin for BibTeX/BibLaTeX export), Obsidian, yEd |
 | `media.nix` | mpv, VLC, GIMP, ImageMagick, Inkscape |
-| `science.nix` | Fiji + QuPath (official jpackage binary repackaged for Nix via the flake overlay, see `nix/packages/qupath.nix`) |
+| `science.nix` | Fiji + QuPath (official jpackage binary repackaged for Nix via the flake overlay, see `nix/packages/qupath.nix`) + RStudio (via `rstudioWrapper` with a CRAN package set: tidyverse, ggplot2, dplyr, tidyr, data.table, knitr, rmarkdown, readxl, stringr, lubridate) |
 | `files.nix` | Thunar (+ volume/archive/media-tag plugins, thumbnails), gvfs, sshfs |
 | `security.nix` | Proton Pass, Bitwarden Desktop (standalone apps) |
 | `system.nix` | wdisplays (Wayland display-settings GUI), solaar (Logitech), nmap, tcpdump |
