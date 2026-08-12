@@ -33,7 +33,7 @@
     historyControl = [ "ignoredups" "ignorespace" ];
     shellAliases = {
       infra-apply-system = "ansible-playbook -i ansible/inventory.ini ansible/playbook.yml -l \"$(hostname)\" --ask-become-pass --ask-vault-pass";
-      infra-apply-user   = "home-manager switch --impure --flake ~/src/nix-ubuntu-infra#jonas";
+      infra-apply-user   = "home-manager switch --flake ~/src/nix-ubuntu-infra#jonas-$(hostname)";
       infra-sync-all     = "git pull origin main && infra-apply-system && infra-apply-user";
 
       infra-commit = "git add -A && git commit -m";

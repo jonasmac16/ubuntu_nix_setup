@@ -37,18 +37,24 @@
         ];
       };
 
-      homeConfiguration = home-manager.lib.homeManagerConfiguration {
+      homeConfiguration = hostname: home-manager.lib.homeManagerConfiguration {
         inherit pkgs;
+        extraSpecialArgs = { inherit hostname; };
         modules = [ ./nix/home.nix ];
       };
+
+      workstationConfiguration = homeConfiguration "workstation-orcrb";
+      laptopConfiguration = homeConfiguration "laptop-xps";
     in
     {
       homeConfigurations = {
-        jonas = homeConfiguration;
+        "jonas-workstation-orcrb" = workstationConfiguration;
+        "jonas-laptop-xps" = laptopConfiguration;
       };
 
       packages.${system} = {
-        default = homeConfiguration.activationPackage;
+        "home-workstation-orcrb" = workstationConfiguration.activationPackage;
+        "home-laptop-xps" = laptopConfiguration.activationPackage;
         qupath = pkgs.qupath;
         openin-native-host = pkgs.openin-native-host;
       };

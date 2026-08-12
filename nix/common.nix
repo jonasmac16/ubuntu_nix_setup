@@ -1,4 +1,4 @@
-{ config, pkgs, ... }:
+{ config, pkgs, keyboardLayout ? "us,gb", ... }:
 
 {
   imports = [
@@ -30,8 +30,7 @@
     ripgrep
     fzf
     firefox
-    # Provides the `home-manager` CLI used by `infra-apply-user` (with the
-    # flake: `home-manager switch --impure --flake ~/src/nix-ubuntu-infra#jonas`).
+    # Provides the `home-manager` CLI used by `infra-apply-user`.
     home-manager
   ];
 

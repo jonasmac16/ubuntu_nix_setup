@@ -6,6 +6,7 @@
     # Playback
     mpv
     vlc
+    spotify
 
     # Image editing / conversion
     gimp

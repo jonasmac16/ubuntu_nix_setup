@@ -116,7 +116,7 @@ nix-ubuntu-infra/
         ├── browsers.nix       # Firefox (add-ons, CSS, settings) + Chromium (extensions, PWAs)
         ├── development.nix    # VSCode, Alacritty, Neovim, terminal tools, containers, lftp
         ├── office.nix         # LibreOffice + dicts, Zotero (+ LO add-in, Zotmoov plugin), Obsidian, yEd
-        ├── media.nix          # mpv, VLC, GIMP, ImageMagick, Inkscape
+        ├── media.nix          # Spotify, mpv, VLC, GIMP, ImageMagick, Inkscape
         ├── science.nix        # Fiji + QuPath (official binary, see nix/packages/qupath.nix) + RStudio
         ├── files.nix          # Thunar + plugins, sshfs
         ├── security.nix       # Proton Pass, Bitwarden desktop apps
@@ -132,6 +132,7 @@ nix-ubuntu-infra/
 - **OS**: Ubuntu 26.04 LTS (Resolute Raccoon). A **minimal / server** install is recommended — the playbook installs every desktop component itself, so a full desktop image would only duplicate things. Network access is required during install.
 - **User account**: You need a user in the `sudo` group (created during Ubuntu install).
 - **Credentials**: Real values for the secrets in the vault (Home/Work WiFi SSID + passwords, NAS/SMB credentials, an SSH private key per host, the Tailscale auth key, and the AnyConnect VPN gateway/user-agent). Git authentication is **SSH-only** — register each host's deployed public key (`~/.ssh/id_ed25519.pub`) on GitHub (and GitLab, if used) once.
+- **Ansible collection**: `setup.sh` installs `community.general` from `ansible/collections/requirements.yml`; this collection is required by the NetworkManager `nmcli` tasks and is not part of `ansible-core`.
 - **EDR installers (optional)**: Tanium (`taniumclient_*.deb` + `tanium-init.dat`) and Sophos (`SophosSetup.sh`) are proprietary and ship from your organisation. Drop them into the gitignored `vendor/` directory to opt a host in; the playbook installs them when present and skips them otherwise.
 - **Hardware expectations**: The sample config includes NAS SMB/NFS automounts, but they currently ship **disabled** — the relevant tasks in `ansible/playbook.yml`, the paths in `host_vars/all/vars.yml`, and the `~/NAS-*` symlinks in `nix/common.nix` are commented out as a reminder. Re-enable them when your storage is available; the assumed layout is a NAS at `192.168.1.100` exporting an NFS share (`/volume1/nfs_data`) and an SMB share (`smb_data`).
 
@@ -451,7 +452,7 @@ Runs `nix flake lock`, which pins the `nixpkgs` (nixos-unstable), `home-manager`
 
 ### Phase 6 — Build and activate the user profile
 
-Runs `nix build --impure .#default` then `./result/activate`. The `--impure` flag is required because `nix/home.nix` reads `/etc/hostname` to auto-select the host module — pure flake evaluation forbids access to absolute paths outside the flake — while the flake **inputs** stay pinned by `flake.lock` regardless. The flake's overlays supply `pkgs.nur` (Firefox add-ons such as Proton Pass and Tridactyl), `pkgs.qupath` (official QuPath binary, see `nix/packages/qupath.nix`) and `pkgs.openin-native-host` (native messaging host for the Open in Firefox extension, see `nix/packages/openin-native-host.nix`); the `default` package is Home Manager's `activationPackage`, which installs the full user profile (all `home.packages`, Sway config, dotfiles, SSH/Git config, NAS symlinks). This is the slowest phase on a fresh machine.
+Runs `nix build .#home-<hostname>` then `./result/activate`. The host is selected explicitly, so evaluation is deterministic and does not depend on `/etc/hostname`. The flake's overlays supply `pkgs.nur` (Firefox add-ons such as Proton Pass and Tridactyl), `pkgs.qupath` (official QuPath binary, see `nix/packages/qupath.nix`) and `pkgs.openin-native-host` (native messaging host for the Open in Firefox extension, see `nix/packages/openin-native-host.nix`); each `home-<hostname>` package is Home Manager's `activationPackage`, which installs the full user profile (all `home.packages`, Sway config, dotfiles, SSH/Git config, NAS symlinks). This is the slowest phase on a fresh machine.
 
 ---
 
@@ -476,6 +477,7 @@ All configuration is driven from this repository. The workflow is: **edit → co
 | Change LibreOffice / Zotero / Obsidian | `nix/modules/office.nix` |
 | Change file manager / network share mounts | `nix/modules/files.nix` |
 | Change Sway keybinds / workspaces | `nix/modules/sway.nix` |
+| Change keyboard layouts / Caps Lock behavior | `nix/modules/sway.nix` and `nix/hosts/<hostname>.nix` |
 | Change shell aliases / Git / SSH | `nix/modules/shell.nix` |
 
 ### The alias suite
@@ -485,7 +487,7 @@ All configuration is driven from this repository. The workflow is: **edit → co
 | Alias | Runs |
 |-------|------|
 | `infra-apply-system` | `ansible-playbook -i ansible/inventory.ini ansible/playbook.yml --ask-become-pass --ask-vault-pass` — re-applies the system layer |
-| `infra-apply-user` | `home-manager switch --impure --flake ~/src/nix-ubuntu-infra#jonas` — re-applies the user layer instantly |
+| `infra-apply-user` | `home-manager switch --flake ~/src/nix-ubuntu-infra#jonas-$(hostname)` — re-applies the user layer instantly |
 | `infra-sync-all` | `git pull origin main && infra-apply-system && infra-apply-user` — pull + full converge |
 | `infra-commit` | `git add -A && git commit -m` (append a message) |
 | `infra-push` | `git push origin main` |
@@ -516,7 +518,7 @@ infra-save
 1. On the new machine: `git clone https://github.com/<you>/nix-ubuntu-infra.git`.
 2. Repeat [Step 3](#step-3--register-your-machine-in-the-inventory) — add an inventory entry named exactly after this machine's `hostname` in the appropriate group (`[workstations]` or `[laptops]`). Each machine self-selects via `-l "$(hostname)"`, so other machines' entries are never applied on it.
 3. Repeat [Step 4](#step-4--create-your-host-specific-configuration) — create `host_vars/<hostname>.yml` for the new machine.
-4. Create the matching Nix host module `nix/hosts/<hostname>.nix` for per-machine user packages/settings (it can start as an empty `{}` module). `home-manager switch` auto-selects it from the machine's hostname; if it's missing, the build aborts with a message telling you to create it.
+4. Create the matching Nix host module `nix/hosts/<hostname>.nix` for per-machine user packages/settings (it can start as an empty `{}` module), then add a matching host output in `flake.nix`.
 5. Add the machine's SSH keypair to the vault under its hostname (see the [SSH key lifecycle](#ssh-key-lifecycle-per-host-keys-in-the-vault)).
 6. Ensure the vault password is available on the new machine — either place `~/.ansible/vault_pass` (mode `0600`) or rely on the `--ask-vault-pass` prompt. The encrypted secrets themselves come with the clone; nothing needs to be recreated.
 7. Commit and push the inventory/host-var/vault changes from any machine.
@@ -542,7 +544,7 @@ Ansible merges `host_vars/all/vars.yml` into every host, then overlays `host_var
 
 The secrets vault (`host_vars/all/secrets.yml`) is common by design — WiFi and NAS credentials are assumed identical across your fleet. If you need per-machine secrets, create `host_vars/<hostname>.yml` mirroring the same variables with a different encryption.
 
-The same split exists on the Nix side. `nix/home.nix` is the Home Manager entry point; it imports `nix/common.nix` (applies to every machine) plus the host module matching this machine's hostname (`nix/hosts/<hostname>.nix`), selected automatically from `/etc/hostname` — no manual wiring. Put shared user packages and settings in `nix/common.nix`; per-machine user packages and settings in `nix/hosts/<hostname>.nix`. If a machine has no host module, `home-manager switch` fails with a message naming the file to create.
+The same split exists on the Nix side. `nix/home.nix` is the Home Manager entry point; it imports `nix/common.nix` (applies to every machine) plus the explicitly selected host module (`nix/hosts/<hostname>.nix`). Put shared user packages and settings in `nix/common.nix`; per-machine user packages and settings in `nix/hosts/<hostname>.nix`.
 
 ---
 
@@ -550,12 +552,17 @@ The same split exists on the Nix side. `nix/home.nix` is the Home Manager entry 
 
 User-level software is grouped into functional modules under `nix/modules/`. `common.nix` imports every module, so **all machines get the full profile** — and because each module is self-contained, a host that shouldn't have a group can simply drop that import from its config.
 
+The shared Sway profile configures both `us` and `gb` QWERTY layouts and maps
+Caps Lock to Escape. The first layout in each host's `xkb_layout` value is the
+initial layout: `workstation-orcrb` uses `us,gb`, while `laptop-xps` uses
+`gb,us`.
+
 | Module | Software |
 |--------|----------|
 | `browsers.nix` | Firefox (add-ons: Proton Pass, Bitwarden, Dark Reader, Consent-O-Matic, Privacy Badger, Tridactyl, Sidebery, Zotero Connector; custom `userChrome`/`userContent` CSS; auto-enabled) and Chromium (extensions: Proton Pass, Bitwarden, Vimium, uBlock Origin, Dark Reader, Open in Firefox; PWAs for **MS Teams**, **Outlook 365**, **ChatGPT**) — Open in Firefox ships with its native messaging host (`openin-native-host`, see `nix/packages/openin-native-host.nix`) and a reverse-mode managed policy: Teams, uni Outlook/SharePoint and ChatGPT stay in Chromium, everything else auto-opens in Firefox |
 | `development.nix` | VSCode (Python/Pylance, Jupyter, Julia, Rainbow CSV, Remote-SSH, Docker, Nix IDE, Prettier, ErrorLens, GitLens, Material Icon Theme), Alacritty, Neovim (minimal init.lua), terminal tools (btop, zoxide, bat, fd, jq, tmux, eza, yazi, lazygit), opencode, pi-coding-agent, quickemu, distrobox, podman, apptainer, lftp, openssh (sftp) |
 | `office.nix` | LibreOffice (+ en_GB/en_US dictionaries), Zotero (+ JRE, auto-installed LibreOffice add-in, and Zotmoov auto-filing attachments into `01_zotero_library` by first author/year, plus the Better BibTeX plugin for BibTeX/BibLaTeX export), Obsidian, yEd |
-| `media.nix` | mpv, VLC, GIMP, ImageMagick, Inkscape |
+| `media.nix` | Spotify, mpv, VLC, GIMP, ImageMagick, Inkscape |
 | `science.nix` | Fiji + QuPath (official jpackage binary repackaged for Nix via the flake overlay, see `nix/packages/qupath.nix`) + RStudio (via `rstudioWrapper` with a CRAN package set: tidyverse, ggplot2, dplyr, tidyr, data.table, knitr, rmarkdown, readxl, stringr, lubridate) |
 | `files.nix` | Thunar (+ volume/archive/media-tag plugins, thumbnails), gvfs, sshfs |
 | `security.nix` | Proton Pass, Bitwarden Desktop (standalone apps) |
@@ -628,7 +635,7 @@ Notes:
 ## Troubleshooting & FAQ
 
 **`home-manager switch` aborts: "No Home Manager host module found"**
-`nix/home.nix` imports `nix/hosts/<hostname>.nix` matching this machine's `hostname`. If that file doesn't exist, create it (copy an existing host file or start with an empty `{}` module) — see Step 6 / the "Adding a Second Machine" section.
+The selected `nix/hosts/<hostname>.nix` module is missing. Create it (copy an existing host file or start with an empty `{}` module) and add a matching flake output.
 
 **`ERROR! provided hosts list is empty`**
 The run limited to `-l "$(hostname)"` matched nothing: there is no inventory entry named exactly like this machine's `hostname` (or it is commented out). Add your hostname entry to the appropriate group in `inventory.ini` (see Step 3). `setup.sh` checks this up front and reports it before Ansible runs.
@@ -651,11 +658,11 @@ Check `systemctl status greetd` and the log at `/var/log/greetd/`. The default c
 **`nix`/`home-manager` not found**
 You must log into a fresh shell (or source `/etc/profile.d/nix.sh`) after installing Nix. If the setup script ran without a reboot, run `. /etc/profile.d/nix.sh` first.
 
-**`nix flake lock` / `nix build .#default` fails: `error: experimental feature 'nix-command' is disabled`**
+**`nix flake lock` / `nix build .#home-<hostname>` fails: `error: experimental feature 'nix-command' is disabled`**
 Flake support is enabled via `experimental-features = nix-command flakes` in `/etc/nix/nix.conf`. If you edited it while the daemon was running, restart it (`sudo systemctl restart nix-daemon`) and log into a fresh shell.
 
-**`home-manager switch --impure --flake …` fails on new Nix**
-The `home-manager` CLI comes from the `home-manager` package in `home.packages` (see `nix/common.nix`). The first switch is done by `setup.sh` Phase 6 (`nix build --impure .#default && ./result/activate`). The `--impure` flag is not optional: `nix/home.nix` needs to read `/etc/hostname` to pick the host module, which pure flake evaluation forbids. If a config change breaks evaluation, fix the module and re-run `infra-apply-user`. Input revisions are pinned in `flake.lock` — bump them deliberately with `nix flake update` rather than letting them drift.
+**`home-manager switch --flake …` fails on new Nix**
+The `home-manager` CLI comes from the `home-manager` package in `home.packages` (see `nix/common.nix`). The first switch is done by `setup.sh` Phase 6 (`nix build .#home-<hostname> && ./result/activate`). If a config change breaks evaluation, fix the module and re-run `infra-apply-user`. Input revisions are pinned in `flake.lock` — bump them deliberately with `nix flake update` rather than letting them drift.
 
 **Discord/Rustup are no longer installed**
 Both were removed from the playbook. If a previous run installed them, uninstall manually (Discord: `sudo apt purge discord`; Rustup: `rm -rf ~/.cargo ~/.rustup`).

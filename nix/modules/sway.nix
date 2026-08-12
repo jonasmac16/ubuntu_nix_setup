@@ -1,4 +1,4 @@
-{ config, pkgs, ... }:
+{ config, pkgs, keyboardLayout ? "us,gb", ... }:
 
 {
   home.packages = with pkgs; [
@@ -15,6 +15,12 @@
       terminal = "foot";
       menu = "wofi --show drun";
       bars = [];
+      input = {
+        "type:keyboard" = {
+          xkb_layout = keyboardLayout;
+          xkb_options = "caps:escape";
+        };
+      };
       startup = [
         { command = "waybar"; }
         { command = "mako"; }
@@ -34,6 +40,9 @@
 
         # Clipboard history picker (cliphist + wofi).
         "Mod4+v" = "exec cliphist list | wofi --dmenu | cliphist decode | wl-copy";
+
+        # Toggle between the configured US and GB keyboard layouts.
+        "Mod4+space" = "input type:keyboard xkb_switch_layout next";
 
         # Volume via PipeWire (wpctl ships with wireplumber, installed
         # system-wide by the Ansible playbook).

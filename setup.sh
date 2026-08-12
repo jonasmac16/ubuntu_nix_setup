@@ -10,11 +10,19 @@ echo "[-] Provisioning target dependencies..."
 sudo apt update
 sudo apt install -y ansible git curl
 
+echo "[-] Installing required Ansible collections..."
+ansible-galaxy collection install -r ansible/collections/requirements.yml
+
 # 2. Trigger localized loopback playbook executions
 HOSTNAME_LIMIT="$(hostname)"
 if ! grep -qE "^${HOSTNAME_LIMIT}([[:space:]]|$)" ansible/inventory.ini; then
     echo "ERROR: this machine's hostname '${HOSTNAME_LIMIT}' is not in ansible/inventory.ini."
     echo "Add an entry matching 'hostname' so the playbook can self-select this machine."
+    exit 1
+fi
+if [ ! -f "nix/hosts/${HOSTNAME_LIMIT}.nix" ]; then
+    echo "ERROR: no Nix host module exists at nix/hosts/${HOSTNAME_LIMIT}.nix."
+    echo "Create the host module before bootstrapping this machine."
     exit 1
 fi
 echo "[-] Executing Ansible hardware execution layers for host '${HOSTNAME_LIMIT}'..."
@@ -35,7 +43,7 @@ else
     echo "[*] Nix cluster paths are already configured"
 fi
 
-# 4. Enable flake support (needed for `nix build .#default` and
+# 4. Enable flake support (needed for host-specific Nix builds and
 #    `home-manager switch --flake`). The daemon must pick up the change.
 echo "[-] Enabling Nix flake support..."
 sudo mkdir -p /etc/nix
@@ -50,11 +58,11 @@ fi
 echo "[-] Locking flake inputs..."
 nix flake lock
 
-# 6. Build and activate the user profile from this repository's flake
-#    (--impure so nix/home.nix can read /etc/hostname to auto-select the host
-#    module; flake inputs stay pinned by flake.lock either way)
+# 6. Build and activate the user profile from this repository's flake.
+#    The host is selected explicitly, so evaluation does not depend on
+#    /etc/hostname.
 echo "[-] Building user profile..."
-nix build --impure .#default
+nix build ".#home-${HOSTNAME_LIMIT}"
 ./result/activate
 
 echo "=========================================================="

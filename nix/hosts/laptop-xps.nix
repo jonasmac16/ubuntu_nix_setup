@@ -1,6 +1,8 @@
 { config, pkgs, ... }:
 
 {
+  _module.args.keyboardLayout = "gb,us";
+
   # Packages and settings specific to the laptop.
   # Applied only when this machine's hostname is `laptop-xps`.
   imports = [

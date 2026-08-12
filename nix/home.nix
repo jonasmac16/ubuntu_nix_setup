@@ -1,15 +1,8 @@
-{ config, pkgs, ... }:
+{ config, pkgs, hostname, ... }:
 
-# Home Manager entry point. Imports the common configuration plus the
-# host-specific module matching this machine's hostname — mirroring how
-# Ansible selects host_vars/<hostname>.yml (see ansible/inventory.ini).
+# Home Manager entry point. The flake passes the target hostname explicitly so
+# evaluation is deterministic and does not depend on the machine running Nix.
 let
-  hostname = builtins.replaceStrings [ "\n" "\r" ] [ "" "" ] (
-    if builtins.pathExists /etc/hostname then
-      builtins.readFile /etc/hostname
-    else
-      builtins.getEnv "HOSTNAME"
-  );
   hostDir = toString ./hosts;
   hostModulePath = hostDir + "/" + hostname + ".nix";
   hostModule =

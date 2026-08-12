@@ -16,6 +16,18 @@
             state: present
             update_cache: true
 
+        - name: Install host-specific system packages
+          ansible.builtin.apt:
+            name: "{{ additional_packages }}"
+            state: present
+          when: additional_packages | length > 0
+
+        - name: Enable NetworkManager for nmcli-managed profiles
+          ansible.builtin.systemd:
+            name: NetworkManager
+            enabled: true
+            state: started
+
         - name: Provision native proprietary graphics drivers
           ansible.builtin.apt:
             name: nvidia-driver-595
@@ -206,7 +218,7 @@
 
         - name: Enable SSH daemon
           ansible.builtin.systemd:
-            name: sshd
+            name: ssh
             enabled: true
             state: started
 
