@@ -33,8 +33,7 @@
     historyControl = [ "ignoredups" "ignorespace" ];
     shellAliases = {
       infra-apply-system = "ansible-playbook -i ansible/inventory.ini ansible/playbook.yml -l \"$(hostname)\" --ask-become-pass --ask-vault-pass";
-      # An empty backup extension makes Home Manager overwrite conflicting files.
-      infra-apply-user   = "home-manager switch -b \"\" --flake ~/src/nix-ubuntu-infra#jonas-$(hostname)";
+      infra-apply-user   = "home-manager switch -b backup --flake ~/src/nix-ubuntu-infra#jonas-$(hostname)";
       infra-sync-all     = "git pull origin main && infra-apply-system && infra-apply-user";
 
       infra-commit = "git add -A && git commit -m";

@@ -487,7 +487,7 @@ All configuration is driven from this repository. The workflow is: **edit → co
 | Alias | Runs |
 |-------|------|
 | `infra-apply-system` | `ansible-playbook -i ansible/inventory.ini ansible/playbook.yml --ask-become-pass --ask-vault-pass` — re-applies the system layer |
-| `infra-apply-user` | `home-manager switch -b "" --flake ~/src/nix-ubuntu-infra#jonas-$(hostname)` — re-applies the user layer instantly and overwrites conflicting files |
+| `infra-apply-user` | `home-manager switch -b backup --flake ~/src/nix-ubuntu-infra#jonas-$(hostname)` — re-applies the user layer instantly and creates backups for conflicting files |
 | `infra-sync-all` | `git pull origin main && infra-apply-system && infra-apply-user` — pull + full converge |
 | `infra-commit` | `git add -A && git commit -m` (append a message) |
 | `infra-push` | `git push origin main` |
