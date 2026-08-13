@@ -102,9 +102,9 @@ nix-ubuntu-infra/
 │       └── laptop-xps.yml           # Host-specific overrides (laptop)
 │
 └── nix/                       # User profile convergence layer
-    ├── home.nix               # Home Manager entry point (imports common + host module by hostname)
+    ├── home.nix               # Home Manager entry point (imports common + explicit host module)
     ├── common.nix             # COMMON config: username, shared package groups, sway, shell, NAS symlinks
-    ├── hosts/                 # Host-specific Nix modules, selected automatically by hostname
+    ├── hosts/                 # Host-specific Nix modules, selected by flake host output
     │   ├── workstation-orcrb.nix  # Desktop-specific packages/settings
     │   └── laptop-xps.nix         # Laptop-specific packages/settings
     ├── packages/              # Out-of-tree packages (flake overlay)
@@ -376,7 +376,7 @@ Git authentication is SSH-only: make sure the host's public key (deployed by the
 
 The script runs each phase with an on-screen `[-]` label. See [What the Bootstrap Actually Does](#what-the-bootstrap-actually-does) for the phase-by-phase breakdown, including what it looks like when everything succeeds.
 
-> If you prefer to run the phases manually (for example, to watch each one), execute them in order: install `ansible`, run `ansible-playbook -i ansible/inventory.ini ansible/playbook.yml -l "$(hostname)" --ask-become-pass --ask-vault-pass`, then install Nix, then build Home Manager. `setup.sh` is just a wrapper around those exact steps.
+> If you prefer to run the phases manually (for example, to watch each one), execute them in order: install `ansible`, install the collection with `ansible-galaxy collection install -r ansible/collections/requirements.yml`, run `ansible-playbook -i ansible/inventory.ini ansible/playbook.yml -l "$(hostname)" --ask-become-pass --ask-vault-pass`, then install Nix, then build `nix build .#home-$(hostname)` and activate `./result/activate`. `setup.sh` is a wrapper around those steps.
 
 ### Step 9 — First login into Sway
 

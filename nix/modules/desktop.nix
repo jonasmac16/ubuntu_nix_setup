@@ -38,6 +38,7 @@
   xdg.portal = {
     enable = true;
     config.common.default = [ "gtk" ];
+    config.sway.default = [ "wlr" "gtk" ];
     extraPortals = with pkgs; [
       xdg-desktop-portal-gtk
       xdg-desktop-portal-wlr

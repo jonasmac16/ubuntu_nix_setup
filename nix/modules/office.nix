@@ -1,5 +1,16 @@
 { config, pkgs, lib, ... }:
 
+let
+  zotmoovXpi = pkgs.fetchurl {
+    url = "https://github.com/wileyyugioh/zotmoov/releases/download/1.2.32/zotmoov-1.2.32-fx.xpi";
+    sha256 = "7770dc2c62d2aaab2662fd7402afadd058387bff69578481ac039bfc050ecc2b";
+  };
+  betterBibtexXpi = pkgs.fetchurl {
+    url = "https://github.com/retorquere/zotero-better-bibtex/releases/download/v9.0.55/zotero-better-bibtex-9.0.55.xpi";
+    sha256 = "2d914ebb174c2c590ecff741a6903f1979065b42740f301d938ec2cb6c03e4d6";
+  };
+in
+
 {
   home.packages = with pkgs; [
     libreoffice
@@ -28,7 +39,7 @@
     oxt=$(${pkgs.findutils}/bin/find ${pkgs.zotero} -name "Zotero_LibreOffice_Integration.oxt" -print -quit 2>/dev/null || true)
     if [ -n "$oxt" ]; then
       LO_URI="file://$HOME/.config/libreoffice/4/user"
-      if ! ${pkgs.libreoffice}/bin/unopkg -env:UserInstallation="$LO_URI" list "$oxt" 2>/dev/null | grep -qi zotero; then
+    if ! ${pkgs.libreoffice}/bin/unopkg -env:UserInstallation="$LO_URI" list "$oxt" 2>/dev/null | ${pkgs.gnugrep}/bin/grep -qi zotero; then
         ${pkgs.libreoffice}/bin/unopkg -env:UserInstallation="$LO_URI" add "$oxt" 2>&1 \
           || echo "[warn] Zotero LibreOffice add-in install failed; install manually via Zotero: Settings -> Cite."
       fi
@@ -55,12 +66,12 @@
   # after Zotero's first launch).
   home.activation.zoteroLinkedBaseDir = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
     ZBASE="${config.home.homeDirectory}/OneDrive/shared_work/xx_bibliography/01_zotero_library"
-    if pgrep -x zotero >/dev/null 2>&1; then
+    if ${pkgs.procps}/bin/pgrep -x zotero >/dev/null 2>&1; then
       echo "[warn] Zotero is running; set Linked Attachment Base Directory manually in Settings -> Advanced -> Files & Folders."
     else
       for pf in "$HOME/.zotero/zotero/"*"/prefs.js" "$HOME/.zotero/Profiles/"*"/prefs.js"; do
         [ -f "$pf" ] || continue
-        if ! grep -q 'extensions.zotero.baseAttachmentPath' "$pf"; then
+        if ! ${pkgs.gnugrep}/bin/grep -q 'extensions.zotero.baseAttachmentPath' "$pf"; then
           echo "user_pref(\"extensions.zotero.baseAttachmentPath\", \"$ZBASE\");" >> "$pf"
           echo "[zotero] Linked Attachment Base Directory -> $ZBASE ($pf)"
         fi
@@ -75,14 +86,12 @@
   # tags it "reading". Pinned + checksum-verified; Zotero 7 loads a packed .xpi
   # placed in the profile extensions dir on the next launch.
   home.activation.installZotmoov = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-    if pgrep -x zotero >/dev/null 2>&1; then
+    if ${pkgs.procps}/bin/pgrep -x zotero >/dev/null 2>&1; then
       echo "[zotmoov] Zotero is running; close it and re-run the switch to install/configure ZotMoov."
-      exit 0
-    fi
+    else
 
     ZOTMOOV_VERSION="1.2.32"
     ZOTMOOV_SHA256="7770dc2c62d2aaab2662fd7402afadd058387bff69578481ac039bfc050ecc2b"
-    ZOTMOOV_URL="https://github.com/wileyyugioh/zotmoov/releases/download/$ZOTMOOV_VERSION/zotmoov-$ZOTMOOV_VERSION-fx.xpi"
 
     PROFILE=""
     for cand in "$HOME/Zotero/prefs.js" "$HOME/.zotero/prefs.js" "$HOME"/.zotero/zotero/*/prefs.js "$HOME"/.zotero/Profiles/*/prefs.js; do
@@ -90,23 +99,15 @@
     done
     if [ -z "$PROFILE" ]; then
       echo "[zotmoov] No Zotero profile found yet; plugin + prefs are applied on the next switch after Zotero's first launch."
-      exit 0
-    fi
-    echo "[zotmoov] Zotero profile: $PROFILE"
+    else
+      echo "[zotmoov] Zotero profile: $PROFILE"
 
     ${pkgs.coreutils}/bin/mkdir -p "$PROFILE/extensions"
     XPI="$PROFILE/extensions/zotmoov-$ZOTMOOV_VERSION-fx.xpi"
     if [ -f "$XPI" ] && [ "$(${pkgs.coreutils}/bin/sha256sum "$XPI" | ${pkgs.coreutils}/bin/cut -d' ' -f1)" = "$ZOTMOOV_SHA256" ]; then
       echo "[zotmoov] plugin already present and verified"
     else
-      echo "[zotmoov] downloading ZotMoov $ZOTMOOV_VERSION ..."
-      ${pkgs.curl}/bin/curl -fsSL "$ZOTMOOV_URL" -o "$XPI"
-      ACTUAL="$(${pkgs.coreutils}/bin/sha256sum "$XPI" | ${pkgs.coreutils}/bin/cut -d' ' -f1)"
-      if [ "$ACTUAL" != "$ZOTMOOV_SHA256" ]; then
-        echo "[zotmoov] ERROR: checksum mismatch (got $ACTUAL); refusing to install."
-        ${pkgs.coreutils}/bin/rm -f "$XPI"
-        exit 1
-      fi
+      ${pkgs.coreutils}/bin/install -m 0644 "${zotmoovXpi}" "$XPI"
     fi
 
     # Stage a fallback copy for manual install if Zotero refuses to sideload.
@@ -122,7 +123,7 @@
 
     add_pref() {
       local key="$1" value="$2"
-      if ! grep -qF "$key" "$PROFILE/prefs.js"; then
+      if ! ${pkgs.gnugrep}/bin/grep -qF "$key" "$PROFILE/prefs.js"; then
         echo "user_pref(\"$key\", $value);" >> "$PROFILE/prefs.js"
         echo "[zotmoov] seeded pref $key"
       fi
@@ -135,7 +136,9 @@
     add_pref 'extensions.zotmoov.subdirectory_string' '"{%a}/{%y}"'
     add_pref 'extensions.zotmoov.allowed_fileext' '["pdf","epub","docx","djvu"]'
     add_pref 'extensions.zotmoov.delete_files' 'false'
-    add_pref 'extensions.zotmoov.custom_menu_items' "{\"Copy to Reading Library\":[{\"command_name\":\"copy\",\"directory\":\"$ZBASE02\",\"enable_customdir\":true,\"enable_subdir\":true},{\"command_name\":\"addtag\",\"tag\":\"reading\"}]}"
+      add_pref 'extensions.zotmoov.custom_menu_items' "{\"Copy to Reading Library\":[{\"command_name\":\"copy\",\"directory\":\"$ZBASE02\",\"enable_customdir\":true,\"enable_subdir\":true},{\"command_name\":\"addtag\",\"tag\":\"reading\"}]}"
+    fi
+    fi
   '';
 
   # Better BibTeX plugin: exports citations / bibliographies as BibTeX or BibLaTeX
@@ -145,14 +148,12 @@
   # nixpkgs ships Zotero 9). No prefs are seeded; configure in the plugin's
   # preferences after the first launch.
   home.activation.installBBT = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-    if pgrep -x zotero >/dev/null 2>&1; then
+    if ${pkgs.procps}/bin/pgrep -x zotero >/dev/null 2>&1; then
       echo "[bbt] Zotero is running; close it and re-run the switch to install Better BibTeX."
-      exit 0
-    fi
+    else
 
     BBT_VERSION="9.0.55"
     BBT_SHA256="2d914ebb174c2c590ecff741a6903f1979065b42740f301d938ec2cb6c03e4d6"
-    BBT_URL="https://github.com/retorquere/zotero-better-bibtex/releases/download/v$BBT_VERSION/zotero-better-bibtex-$BBT_VERSION.xpi"
 
     PROFILE=""
     for cand in "$HOME/Zotero/prefs.js" "$HOME/.zotero/prefs.js" "$HOME"/.zotero/zotero/*/prefs.js "$HOME"/.zotero/Profiles/*/prefs.js; do
@@ -160,23 +161,15 @@
     done
     if [ -z "$PROFILE" ]; then
       echo "[bbt] No Zotero profile found yet; Better BibTeX is installed on the next switch after Zotero's first launch."
-      exit 0
-    fi
-    echo "[bbt] Zotero profile: $PROFILE"
+    else
+      echo "[bbt] Zotero profile: $PROFILE"
 
     ${pkgs.coreutils}/bin/mkdir -p "$PROFILE/extensions"
     XPI="$PROFILE/extensions/zotero-better-bibtex-$BBT_VERSION.xpi"
     if [ -f "$XPI" ] && [ "$(${pkgs.coreutils}/bin/sha256sum "$XPI" | ${pkgs.coreutils}/bin/cut -d' ' -f1)" = "$BBT_SHA256" ]; then
       echo "[bbt] plugin already present and verified"
     else
-      echo "[bbt] downloading Better BibTeX $BBT_VERSION ..."
-      ${pkgs.curl}/bin/curl -fsSL "$BBT_URL" -o "$XPI"
-      ACTUAL="$(${pkgs.coreutils}/bin/sha256sum "$XPI" | ${pkgs.coreutils}/bin/cut -d' ' -f1)"
-      if [ "$ACTUAL" != "$BBT_SHA256" ]; then
-        echo "[bbt] ERROR: checksum mismatch (got $ACTUAL); refusing to install."
-        ${pkgs.coreutils}/bin/rm -f "$XPI"
-        exit 1
-      fi
+      ${pkgs.coreutils}/bin/install -m 0644 "${betterBibtexXpi}" "$XPI"
     fi
 
     # Stage a fallback copy for manual install if Zotero refuses to sideload.
@@ -185,6 +178,8 @@
     echo "[bbt] installed; restart Zotero. Fallback if it doesn't load: Tools -> Plugins -> Install Add-on From File -> $HOME/.local/share/zotero-better-bibtex/zotero-better-bibtex-$BBT_VERSION.xpi"
 
     # Force Zotero's AddonManager to re-scan the extensions directory.
-    ${pkgs.gnused}/bin/sed -i -E '/extensions\.last(AppBuildId|AppVersion|PlatformVersion)/d' "$PROFILE/prefs.js"
+      ${pkgs.gnused}/bin/sed -i -E '/extensions\.last(AppBuildId|AppVersion|PlatformVersion)/d' "$PROFILE/prefs.js"
+    fi
+    fi
   '';
 }

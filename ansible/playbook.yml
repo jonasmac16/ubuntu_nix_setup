@@ -229,15 +229,50 @@
               - network-manager-openconnect-gnome
             state: present
 
-        - name: Define central AnyConnect VPN profile
-          community.general.nmcli:
-            conn_name: "AnyConnect"
-            type: vpn
-            vpn:
-              service-type: org.freedesktop.NetworkManager.openconnect
-              gateway: "{{ vault_anyconnect_gateway }}"
-              useragent: "{{ vault_anyconnect_user_agent }}"
-            state: present
+        - name: Check for central AnyConnect VPN profile
+          ansible.builtin.command:
+            argv:
+              - nmcli
+              - --terse
+              - --fields
+              - NAME
+              - connection
+              - show
+              - AnyConnect
+          register: anyconnect_profile
+          changed_when: false
+          failed_when: false
+
+        - name: Create central AnyConnect VPN profile
+          ansible.builtin.command:
+            argv:
+              - nmcli
+              - connection
+              - add
+              - type
+              - vpn
+              - vpn-type
+              - openconnect
+              - con-name
+              - AnyConnect
+              - ifname
+              - "*"
+              - vpn.data
+              - "gateway = {{ vault_anyconnect_gateway }}, useragent = {{ vault_anyconnect_user_agent }}"
+          no_log: true
+          when: anyconnect_profile.rc != 0
+
+        - name: Reconcile central AnyConnect VPN profile settings
+          ansible.builtin.command:
+            argv:
+              - nmcli
+              - connection
+              - modify
+              - AnyConnect
+              - vpn.data
+              - "gateway = {{ vault_anyconnect_gateway }}, useragent = {{ vault_anyconnect_user_agent }}"
+          no_log: true
+          changed_when: false
 
         - name: Install Tailscale mesh client
           ansible.builtin.shell: "curl -fsSL https://tailscale.com/install.sh | sh"
