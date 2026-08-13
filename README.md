@@ -376,7 +376,7 @@ Git authentication is SSH-only: make sure the host's public key (deployed by the
 
 The script runs each phase with an on-screen `[-]` label. See [What the Bootstrap Actually Does](#what-the-bootstrap-actually-does) for the phase-by-phase breakdown, including what it looks like when everything succeeds.
 
-> If you prefer to run the phases manually (for example, to watch each one), execute them in order: install `ansible`, install the collection with `ansible-galaxy collection install -r ansible/collections/requirements.yml`, run `ansible-playbook -i ansible/inventory.ini ansible/playbook.yml -l "$(hostname)" --ask-become-pass --ask-vault-pass`, then install Nix, then build `nix build .#home-$(hostname)` and activate `./result/activate`. `setup.sh` is a wrapper around those steps.
+> If you prefer to run the phases manually (for example, to watch each one), execute them in order: install `ansible`, install the collection with `ansible-galaxy collection install -r ansible/collections/requirements.yml`, run `ansible-playbook -i ansible/inventory.ini ansible/playbook.yml -l "$(hostname)" --ask-become-pass --ask-vault-pass`, then install Nix, then build `nix build .#home-$(hostname)` and activate with `HOME_MANAGER_BACKUP_EXT=backup ./result/activate`. `setup.sh` is a wrapper around those steps.
 
 ### Step 9 — First login into Sway
 
@@ -452,7 +452,7 @@ Runs `nix flake lock`, which pins the `nixpkgs` (nixos-unstable), `home-manager`
 
 ### Phase 6 — Build and activate the user profile
 
-Runs `nix build .#home-<hostname>` then `./result/activate`. The host is selected explicitly, so evaluation is deterministic and does not depend on `/etc/hostname`. The flake's overlays supply `pkgs.nur` (Firefox add-ons such as Proton Pass and Tridactyl), `pkgs.qupath` (official QuPath binary, see `nix/packages/qupath.nix`) and `pkgs.openin-native-host` (native messaging host for the Open in Firefox extension, see `nix/packages/openin-native-host.nix`); each `home-<hostname>` package is Home Manager's `activationPackage`, which installs the full user profile (all `home.packages`, Sway config, dotfiles, SSH/Git config, NAS symlinks). This is the slowest phase on a fresh machine.
+Runs `nix build .#home-<hostname>` then `HOME_MANAGER_BACKUP_EXT=backup ./result/activate`. The host is selected explicitly, so evaluation is deterministic and does not depend on `/etc/hostname`. Home Manager installs the full user profile (all `home.packages`, Sway config, dotfiles, SSH/Git config, NAS symlinks) and backs up conflicting files with the `.backup` suffix. This is the slowest phase on a fresh machine.
 
 ---
 
@@ -662,7 +662,7 @@ You must log into a fresh shell (or source `/etc/profile.d/nix.sh`) after instal
 Flake support is enabled via `experimental-features = nix-command flakes` in `/etc/nix/nix.conf`. If you edited it while the daemon was running, restart it (`sudo systemctl restart nix-daemon`) and log into a fresh shell.
 
 **`home-manager switch --flake …` fails on new Nix**
-The `home-manager` CLI comes from the `home-manager` package in `home.packages` (see `nix/common.nix`). The first switch is done by `setup.sh` Phase 6 (`nix build .#home-<hostname> && ./result/activate`). If a config change breaks evaluation, fix the module and re-run `infra-apply-user`. Input revisions are pinned in `flake.lock` — bump them deliberately with `nix flake update` rather than letting them drift.
+The `home-manager` CLI comes from the `home-manager` package in `home.packages` (see `nix/common.nix`). The first activation is done by `setup.sh` Phase 6 (`nix build .#home-<hostname> && HOME_MANAGER_BACKUP_EXT=backup ./result/activate`). If a config change breaks evaluation, fix the module and re-run `infra-apply-user`. Input revisions are pinned in `flake.lock` — bump them deliberately with `nix flake update` rather than letting them drift.
 
 **Discord/Rustup are no longer installed**
 Both were removed from the playbook. If a previous run installed them, uninstall manually (Discord: `sudo apt purge discord`; Rustup: `rm -rf ~/.cargo ~/.rustup`).

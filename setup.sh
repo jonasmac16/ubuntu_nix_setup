@@ -63,7 +63,7 @@ nix flake lock
 #    /etc/hostname.
 echo "[-] Building user profile..."
 nix build ".#home-${HOSTNAME_LIMIT}"
-./result/activate
+HOME_MANAGER_BACKUP_EXT=backup ./result/activate
 
 echo "=========================================================="
 echo " Alignment Complete. Reboot your machine to enter Sway!"
