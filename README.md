@@ -422,7 +422,7 @@ The playbook (`ansible/playbook.yml`) runs in two blocks.
 | Enable `seatd` | Starts the seat management daemon (login-session-free input/DRM access) |
 | Configure Home WiFi | Creates a `Home-WiFi` network profile via `nmcli` (SSID + password from vault, higher autoconnect priority) |
 | Configure Work WiFi | Creates a `Work-WiFi` network profile via `nmcli` (SSID + password from vault) |
-| Install display manager | `sddm` + the pinned official Catppuccin Mocha theme and X11 greeter backend, then deploys `/etc/sddm.conf.d/10-sway.conf` and enables SDDM for the next boot |
+| Install display manager | Masks SDDM while provisioning so it cannot interrupt the installer, installs `sddm` + the pinned official Catppuccin Mocha theme and X11 greeter backend, then deploys `/etc/sddm.conf.d/10-sway.conf` and enables SDDM for the next boot |
 | Install storage clients | `nfs-common`, `cifs-utils`; creates `/mnt/nas/nfs` and `/mnt/nas/smb` — **currently disabled** (commented out) |
 | Deploy SMB credentials | `/etc/samba/.smbcredentials` (mode `0600`, root-owned) from vault values — **currently disabled** (commented out) |
 | Deploy automount units | Writes `mnt-nas-nfs.mount`/`.automount` and `mnt-nas-smb.mount`/`.automount` to `/etc/systemd/system/`, runs `daemon_reload`, enables + starts both automounts (mount-on-access, idle-unmount after 300 s) — **currently disabled** (commented out) |

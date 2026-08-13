@@ -96,6 +96,11 @@
               psk: "{{ vault_work_wifi_password }}"
             state: present
 
+        - name: Prevent SDDM from interrupting the active installation session
+          ansible.builtin.systemd:
+            name: sddm
+            masked: true
+
         - name: Install SDDM and its theme runtime for Wayland sessions
           ansible.builtin.apt:
             name: [sddm, qml6-module-qtquick, qml6-module-qt5compat-graphicaleffects, xserver-xorg-core]
@@ -134,6 +139,7 @@
         - name: Enable display daemon on the next boot
           ansible.builtin.systemd:
             name: sddm
+            masked: false
             enabled: true
 
         # ====================================================
