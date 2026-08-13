@@ -414,7 +414,7 @@ The playbook (`ansible/playbook.yml`) runs in two blocks.
 
 | Task | Effect |
 |------|--------|
-| Install core display components | `sway`, `swaylock`, `swayidle`, `xwayland`, `seatd`, `dbus-x11`, `network-manager`, `spice-vdagent` |
+| Install core display components | `sway`, `swaylock`, `swayidle`, `xwayland`, `seatd`, `dbus-x11`, `network-manager` |
 | Install NVIDIA drivers | `nvidia-driver-595` — only when `install_nvidia: true` |
 | Configure PipeWire | `pipewire`, `pipewire-pulse`, `wireplumber` for Wayland-native audio |
 | Install desktop system daemons | `bluez`, `udisks2`, `polkitd` (system APT packages) with `bluetooth`, `udisks2` and `polkit` services enabled — the system side the user-session tools in `nix/modules/desktop.nix` depend on |

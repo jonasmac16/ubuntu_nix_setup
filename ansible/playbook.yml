@@ -12,7 +12,7 @@
       block:
         - name: Update apt index cache and pull core display components
           ansible.builtin.apt:
-            name: [sway, swaylock, swayidle, xwayland, seatd, dbus-x11, network-manager, spice-vdagent, xserver-xorg-input-libinput]
+            name: [sway, swaylock, swayidle, xwayland, seatd, dbus-x11, network-manager, xserver-xorg-input-libinput]
             state: present
             update_cache: true
 
@@ -75,11 +75,6 @@
             enabled: true
             state: started
 
-        - name: Start SPICE guest agent socket
-          ansible.builtin.systemd:
-            name: spice-vdagentd.socket
-            state: started
-
         - name: Configure local home wireless network profiles
           community.general.nmcli:
             conn_name: "Home-WiFi"
@@ -134,7 +129,7 @@
 
               [Theme]
               Current=catppuccin-mocha-mauve
-              CustomBackground=false
+              CustomBackground=true
 
         - name: Enable display daemon boot target hooks
           ansible.builtin.systemd:
