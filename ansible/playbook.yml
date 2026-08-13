@@ -12,7 +12,7 @@
       block:
         - name: Update apt index cache and pull core display components
           ansible.builtin.apt:
-            name: [sway, swaylock, swayidle, xwayland, seatd, dbus-x11, network-manager]
+            name: [sway, swaylock, swayidle, xwayland, seatd, dbus-x11, network-manager, spice-vdagent, xserver-xorg-input-libinput]
             state: present
             update_cache: true
 
@@ -75,6 +75,11 @@
             enabled: true
             state: started
 
+        - name: Start SPICE guest agent socket
+          ansible.builtin.systemd:
+            name: spice-vdagentd.socket
+            state: started
+
         - name: Configure local home wireless network profiles
           community.general.nmcli:
             conn_name: "Home-WiFi"
@@ -96,25 +101,44 @@
               psk: "{{ vault_work_wifi_password }}"
             state: present
 
-        - name: Setup lightweight display manager gateway
+        - name: Install SDDM and its theme runtime for Wayland sessions
           ansible.builtin.apt:
-            name: [greetd, cage]
+            name: [sddm, qml6-module-qtquick, qml6-module-qt5compat-graphicaleffects, xserver-xorg-core]
             state: present
 
-        - name: Deploy greetd direct console bypass loop
+        - name: Install archive tools for Catppuccin SDDM theme
+          ansible.builtin.apt:
+            name: unzip
+            state: present
+
+        - name: Fetch the official Catppuccin Mocha SDDM theme release
+          ansible.builtin.get_url:
+            url: https://github.com/catppuccin/sddm/releases/download/v1.1.2/catppuccin-mocha-mauve-sddm.zip
+            dest: /usr/local/src/catppuccin-mocha-mauve-sddm.zip
+            mode: '0644'
+
+        - name: Install Catppuccin Mocha SDDM theme
+          ansible.builtin.unarchive:
+            src: /usr/local/src/catppuccin-mocha-mauve-sddm.zip
+            dest: /usr/share/sddm/themes
+            remote_src: true
+            creates: /usr/share/sddm/themes/catppuccin-mocha-mauve/theme.conf
+
+        - name: Configure SDDM to start the Sway Wayland session
           ansible.builtin.copy:
-            dest: /etc/greetd/config.toml
+            dest: /etc/sddm.conf.d/10-sway.conf
             mode: '0644'
             content: |
-              [terminal]
-              vt = 1
-              [default_session]
-              command = "cage agreety --cmd sway"
-              user = "greeter"
+              [General]
+              DisplayServer=x11
+
+              [Theme]
+              Current=catppuccin-mocha-mauve
+              CustomBackground=false
 
         - name: Enable display daemon boot target hooks
           ansible.builtin.systemd:
-            name: greetd
+            name: sddm
             enabled: true
             state: restarted
 
@@ -349,7 +373,7 @@
       block:
         - name: Ensure target .ssh folder contains valid system masks
           ansible.builtin.file:
-            path: "{{ ansible_facts.env.HOME }}/.ssh"
+            path: "{{ lookup('ansible.builtin.env', 'HOME') }}/.ssh"
             state: directory
             mode: '0700'
 
@@ -374,18 +398,18 @@
 
         - name: Ensure SSH config drop-in directory exists
           ansible.builtin.file:
-            path: "{{ ansible_facts.env.HOME }}/.ssh/config.d"
+            path: "{{ lookup('ansible.builtin.env', 'HOME') }}/.ssh/config.d"
             state: directory
             mode: '0700'
 
         - name: Deploy SSH host definitions from Vault
           ansible.builtin.template:
             src: ssh_config_hosts.j2
-            dest: "{{ ansible_facts.env.HOME }}/.ssh/config.d/10-vault-hosts"
+            dest: "{{ lookup('ansible.builtin.env', 'HOME') }}/.ssh/config.d/10-vault-hosts"
             mode: '0600'
 
         - name: Construct user profile binary path anchors
           ansible.builtin.file:
-            path: "{{ ansible_facts.env.HOME }}/.local/bin"
+            path: "{{ lookup('ansible.builtin.env', 'HOME') }}/.local/bin"
             state: directory
             mode: '0755'

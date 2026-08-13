@@ -61,7 +61,7 @@ Two independent tools converge the machine:
 
 | Tool | Scope | Runs as | Manages |
 |------|-------|---------|---------|
-| **Ansible** | System / root | `sudo` | APT packages, NVIDIA drivers, network profiles, `greetd`/`seatd`, systemd NFS/SMB automounts, secrets deployment |
+| **Ansible** | System / root | `sudo` | APT packages, NVIDIA drivers, network profiles, SDDM/seatd, systemd NFS/SMB automounts, secrets deployment |
 | **Nix + Home Manager** | User space | your account | CLI tools, user packages, `.config/*` dotfiles, Sway, Bash/SSH/Git config, NAS symlinks |
 
 Everything is executed **locally on the target machine** (`ansible_connection=local`) — no control node, no SSH to yourself, no server component. The repository is cloned from Git and applied on each host.
@@ -386,7 +386,7 @@ Reboot:
 sudo reboot
 ```
 
-`greetd` starts a graphical login. Log in with your user — the session launches **Sway** (Wayland) with:
+`SDDM` starts a graphical login. Select the **Sway** session and log in with your user. The session launches **Sway** (Wayland) with:
 
 - **Foot** terminal (`Super + Enter`)
 - **Wofi** application launcher (`Super + D`)
@@ -414,7 +414,7 @@ The playbook (`ansible/playbook.yml`) runs in two blocks.
 
 | Task | Effect |
 |------|--------|
-| Install core display components | `sway`, `swaylock`, `swayidle`, `xwayland`, `seatd`, `dbus-x11`, `network-manager` |
+| Install core display components | `sway`, `swaylock`, `swayidle`, `xwayland`, `seatd`, `dbus-x11`, `network-manager`, `spice-vdagent` |
 | Install NVIDIA drivers | `nvidia-driver-595` — only when `install_nvidia: true` |
 | Configure PipeWire | `pipewire`, `pipewire-pulse`, `wireplumber` for Wayland-native audio |
 | Install desktop system daemons | `bluez`, `udisks2`, `polkitd` (system APT packages) with `bluetooth`, `udisks2` and `polkit` services enabled — the system side the user-session tools in `nix/modules/desktop.nix` depend on |
@@ -422,7 +422,7 @@ The playbook (`ansible/playbook.yml`) runs in two blocks.
 | Enable `seatd` | Starts the seat management daemon (login-session-free input/DRM access) |
 | Configure Home WiFi | Creates a `Home-WiFi` network profile via `nmcli` (SSID + password from vault, higher autoconnect priority) |
 | Configure Work WiFi | Creates a `Work-WiFi` network profile via `nmcli` (SSID + password from vault) |
-| Install display manager | `greetd` + `cage`, then deploys `/etc/greetd/config.toml` that boots straight into `sway` and restarts the service |
+| Install display manager | `sddm` + the pinned official Catppuccin Mocha theme and X11 greeter backend, then deploys `/etc/sddm.conf.d/10-sway.conf` and restarts the service |
 | Install storage clients | `nfs-common`, `cifs-utils`; creates `/mnt/nas/nfs` and `/mnt/nas/smb` — **currently disabled** (commented out) |
 | Deploy SMB credentials | `/etc/samba/.smbcredentials` (mode `0600`, root-owned) from vault values — **currently disabled** (commented out) |
 | Deploy automount units | Writes `mnt-nas-nfs.mount`/`.automount` and `mnt-nas-smb.mount`/`.automount` to `/etc/systemd/system/`, runs `daemon_reload`, enables + starts both automounts (mount-on-access, idle-unmount after 300 s) — **currently disabled** (commented out) |
@@ -487,7 +487,7 @@ All configuration is driven from this repository. The workflow is: **edit → co
 | Alias | Runs |
 |-------|------|
 | `infra-apply-system` | `ansible-playbook -i ansible/inventory.ini ansible/playbook.yml --ask-become-pass --ask-vault-pass` — re-applies the system layer |
-| `infra-apply-user` | `home-manager switch --flake ~/src/nix-ubuntu-infra#jonas-$(hostname)` — re-applies the user layer instantly |
+| `infra-apply-user` | `home-manager switch -b "" --flake ~/src/nix-ubuntu-infra#jonas-$(hostname)` — re-applies the user layer instantly and overwrites conflicting files |
 | `infra-sync-all` | `git pull origin main && infra-apply-system && infra-apply-user` — pull + full converge |
 | `infra-commit` | `git add -A && git commit -m` (append a message) |
 | `infra-push` | `git push origin main` |
@@ -652,8 +652,8 @@ The hook refuses to commit `secrets.yml` in plaintext. Run `ansible-vault encryp
 **`nmcli` task fails: NetworkManager not running**
 `network-manager` is installed by the playbook, but if the base system uses `netplan`/`systemd-networkd`, NetworkManager may not be active. Verify with `systemctl status NetworkManager` and `systemctl enable --now NetworkManager`, or adjust the WiFi task to your network backend.
 
-**greetd shows a black screen / Sway doesn't start**
-Check `systemctl status greetd` and the log at `/var/log/greetd/`. The default config runs `cage agreety --cmd sway`. If Sway itself fails, run `sway -d` from a TTY to see diagnostics; missing `seatd` or `video`/`input` group membership is the usual cause.
+**SDDM shows a black screen / Sway doesn't start**
+Check `systemctl status sddm` and the log with `journalctl -u sddm`. Select the **Sway** Wayland session at the login screen. If Sway itself fails, run `sway -d` from a TTY to see diagnostics; missing `seatd` or `video`/`input` group membership is the usual cause.
 
 **`nix`/`home-manager` not found**
 You must log into a fresh shell (or source `/etc/profile.d/nix.sh`) after installing Nix. If the setup script ran without a reboot, run `. /etc/profile.d/nix.sh` first.

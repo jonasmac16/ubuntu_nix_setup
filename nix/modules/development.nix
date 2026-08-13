@@ -7,6 +7,8 @@
 
     profiles.default = {
       extensions = with pkgs.vscode-extensions; [
+        catppuccin.catppuccin-vsc
+        catppuccin.catppuccin-vsc-icons
         ms-python.python
         ms-toolsai.jupyter
         julialang.language-julia
@@ -29,7 +31,8 @@
         "editor.defaultFormatter" = "esbenp.prettier-vscode";
         "editor.minimap.enabled" = true;
         "files.autoSave" = "afterDelay";
-        "workbench.iconTheme" = "material-icon-theme";
+        "workbench.colorTheme" = "Catppuccin Mocha";
+        "workbench.iconTheme" = "catppuccin-icons";
 
         # Prettier
         "prettier.singleQuote" = true;
@@ -74,6 +77,9 @@
           background = "#1e1e2e";
           foreground = "#cdd6f4";
         };
+        cursor = { text = "#1e1e2e"; cursor = "#f5c2e7"; };
+        normal = { black = "#45475a"; red = "#f38ba8"; green = "#a6e3a1"; yellow = "#f9e2af"; blue = "#89b4fa"; magenta = "#f5c2e7"; cyan = "#94e2d5"; white = "#bac2de"; };
+        bright = { black = "#585b70"; red = "#f38ba8"; green = "#a6e3a1"; yellow = "#f9e2af"; blue = "#89b4fa"; magenta = "#f5c2e7"; cyan = "#94e2d5"; white = "#a6adc8"; };
       };
       key_bindings = [
         {
@@ -124,12 +130,14 @@
       opt.ignorecase = true
       opt.smartcase = true
       opt.termguicolors = true
+      vim.cmd.colorscheme("catppuccin-mocha")
       opt.clipboard = "unnamedplus"
 
       vim.g.mapleader = " "
       vim.keymap.set("n", "<leader>w", ":w<CR>", { desc = "Save" })
       vim.keymap.set("n", "<leader>q", ":q<CR>", { desc = "Quit" })
     '';
+    plugins = [ pkgs.vimPlugins.catppuccin-nvim ];
   };
 
   # ------------------------------------------------ Shell-integrated tools
@@ -138,6 +146,22 @@
   programs.zoxide.enable = true; # smart `cd` with an fzf-powered picker
   programs.bat.enable = true;    # cat clone with syntax highlighting
   programs.eza.enable = true;    # modern ls replacement
-  programs.tmux.enable = true;   # terminal multiplexer
+  programs.tmux = {
+    enable = true;
+    plugins = [ pkgs.tmuxPlugins.catppuccin ];
+    extraConfig = ''
+      set -g @catppuccin_flavour 'mocha'
+    '';
+  };
+
+  home.file.".config/bat/themes/Catppuccin Mocha.tmTheme".source = pkgs.fetchurl {
+    name = "catppuccin-mocha.tmTheme";
+    url = "https://raw.githubusercontent.com/catppuccin/bat/main/themes/Catppuccin%20Mocha.tmTheme";
+    hash = "sha256-OVVm8IzrMBuTa5HAd2kO+U9662UbEhVT8gHJnCvUqnc=";
+  };
+
+  home.file.".config/bat/config".text = ''
+    --theme="Catppuccin Mocha"
+  '';
 
 }

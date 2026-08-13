@@ -35,6 +35,16 @@
 
       # Custom browser chrome (toolbar/tab styling).
       userChrome = ''
+        :root {
+          --ctp-base: #1e1e2e;
+          --ctp-mantle: #181825;
+          --ctp-crust: #11111b;
+          --ctp-text: #cdd6f4;
+          --ctp-blue: #89b4fa;
+        }
+        #navigator-toolbox, #TabsToolbar { background: var(--ctp-mantle) !important; color: var(--ctp-text) !important; }
+        .tabbrowser-tab[selected] .tab-background { background: var(--ctp-blue) !important; }
+        .tabbrowser-tab[selected] .tab-label { color: var(--ctp-crust) !important; }
         /* Hide the vertical tab bar title if Sidebery is used */
         #sidebar-box[sidebarcommand*="sidebery"] { min-width: 250px !important; }
         /* Compact tab bar */
@@ -44,7 +54,8 @@
       # Custom site content styling (used e.g. for global dark-reader overrides).
       userContent = ''
         @-moz-document url-prefix(about:) {
-          :root { background-color: #1e1e1e !important; color: #d4d4d4 !important; }
+           :root { background-color: #1e1e2e !important; color: #cdd6f4 !important; }
+           * { scrollbar-color: #585b70 #1e1e2e !important; }
         }
       '';
     };
