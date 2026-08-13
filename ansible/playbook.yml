@@ -131,11 +131,10 @@
               Current=catppuccin-mocha-mauve
               CustomBackground=true
 
-        - name: Enable display daemon boot target hooks
+        - name: Enable display daemon on the next boot
           ansible.builtin.systemd:
             name: sddm
             enabled: true
-            state: restarted
 
         # ====================================================
         # DISABLED: NAS SMB/NFS automount setup.
