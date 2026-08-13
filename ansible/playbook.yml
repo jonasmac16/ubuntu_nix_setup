@@ -65,7 +65,7 @@
 
         - name: Bind user account to critical hardware execution groups
           ansible.builtin.user:
-            name: "{{ ansible_env.USER if ansible_env.USER != 'root' else ansible_user }}"
+            name: "{{ ansible_facts.user_id }}"
             append: true
             groups: [video, input]
 
@@ -234,10 +234,11 @@
             argv:
               - nmcli
               - --terse
-              - --fields
-              - NAME
+              - --get-values
+              - connection.id
               - connection
               - show
+              - id
               - AnyConnect
           register: anyconnect_profile
           changed_when: false
@@ -348,7 +349,7 @@
       block:
         - name: Ensure target .ssh folder contains valid system masks
           ansible.builtin.file:
-            path: "{{ ansible_env.HOME }}/.ssh"
+            path: "{{ ansible_facts.env.HOME }}/.ssh"
             state: directory
             mode: '0700'
 
@@ -373,18 +374,18 @@
 
         - name: Ensure SSH config drop-in directory exists
           ansible.builtin.file:
-            path: "{{ ansible_env.HOME }}/.ssh/config.d"
+            path: "{{ ansible_facts.env.HOME }}/.ssh/config.d"
             state: directory
             mode: '0700'
 
         - name: Deploy SSH host definitions from Vault
           ansible.builtin.template:
             src: ssh_config_hosts.j2
-            dest: "{{ ansible_env.HOME }}/.ssh/config.d/10-vault-hosts"
+            dest: "{{ ansible_facts.env.HOME }}/.ssh/config.d/10-vault-hosts"
             mode: '0600'
 
         - name: Construct user profile binary path anchors
           ansible.builtin.file:
-            path: "{{ ansible_env.HOME }}/.local/bin"
+            path: "{{ ansible_facts.env.HOME }}/.local/bin"
             state: directory
             mode: '0755'
